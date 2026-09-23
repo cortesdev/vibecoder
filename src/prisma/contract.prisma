@@ -1,0 +1,34 @@
+// use prisma-8
+// Vibecoder Pro license store. The schema file is now the "contract" in
+// Prisma ORM 8: contract emit writes contract.json + contract.d.ts next to
+// it (both committed), and the client in src/lib/db.ts is built from them.
+
+model License {
+  id                  String   @id @default(cuid(2))
+  key                 String   @unique
+  email               String
+  stripeSessionId     String   @unique // idempotency: one license per checkout
+  stripePaymentIntent String   @default("")
+  // Keys prefixed TEST- come from demo checkout (Stripe test mode, no money).
+  // The validate endpoint accepts them; the success page labels them.
+  status              String   @default("active") // active | revoked
+  createdAt           DateTime @default(now())
+  updatedAt           temporal.updatedAt()
+  activations         LicenseActivation[]
+
+  @@map("License")
+}
+
+model LicenseActivation {
+  id        String   @id @default(cuid(2))
+  licenseId String
+  machineId String // hashed machine fingerprint from the desktop app
+  label     String   @default("") // e.g. "Ricardo's MacBook"
+  createdAt DateTime @default(now())
+
+  license License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  @@unique([licenseId, machineId])
+  @@index([licenseId])
+  @@map("LicenseActivation")
+}

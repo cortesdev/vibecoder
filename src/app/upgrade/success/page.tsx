@@ -45,9 +45,9 @@ export default async function UpgradeSuccessPage({
 
     if (!error) {
       try {
-        const license = await db.license.findUnique({
-          where: { stripeSessionId: sessionId },
-        });
+        const license = await db.orm.public.License
+          .where({ stripeSessionId: sessionId })
+          .first();
         if (license) {
           licenseKey = license.key;
           email = license.email;
