@@ -4,7 +4,13 @@ import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { getBalance, ensureWallet } from "@/lib/credits";
 import ThemeToggle from "@/components/theme-toggle";
-import { Cog, CreditCard, FolderOpen, Plus, ArrowUpCircle, LogOut } from "lucide-react";
+import SidebarProject from "@/components/projects/sidebar-project";
+import { Cog, CreditCard, Plus, ArrowUpCircle, LogOut } from "lucide-react";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default async function AppLayout({
   children,
@@ -73,12 +79,7 @@ export default async function AppLayout({
           ) : (
             <ul className="flex flex-col gap-0.5">
               {projects.map((p) => (
-                <li key={p.id}>
-                  <Link href={`/agent/projects/${p.id}`} className="sidebar-link">
-                    <FolderOpen size={15} aria-hidden="true" className="shrink-0" />
-                    <span className="truncate">{p.name}</span>
-                  </Link>
-                </li>
+                <SidebarProject key={p.id} id={p.id} name={p.name} />
               ))}
             </ul>
           )}

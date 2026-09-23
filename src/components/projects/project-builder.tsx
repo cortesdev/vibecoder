@@ -376,7 +376,7 @@ export default function ProjectBuilder({
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 runAgent();
               }
@@ -385,7 +385,7 @@ export default function ProjectBuilder({
           <div className="mt-2 flex items-center gap-2">
             <ModelPicker value={modelId} onChange={setModelId} balance={balance} />
             <span className="hidden text-[11px] sm:inline" style={{ color: "var(--ink-3)" }}>
-              ⌘↩
+              ↩
             </span>
             <button type="submit" className="btn btn-primary btn-sm ml-auto" disabled={busy || !prompt.trim()}>
               {busy ? "Working…" : "Run agent"}

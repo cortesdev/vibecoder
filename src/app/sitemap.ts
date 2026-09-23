@@ -1,11 +1,10 @@
 import type { MetadataRoute } from "next";
-
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://vibecoder.io";
+import { siteConfig } from "@/lib/site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
-      url: siteUrl,
+      url: siteConfig.url,
       lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 1,

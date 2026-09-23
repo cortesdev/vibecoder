@@ -1,10 +1,19 @@
+import type { Metadata } from "next";
 import SiteNav from "@/components/site-nav";
 import TerminalWindow from "@/components/terminal-window";
 import DownloadButtons from "@/components/download-buttons";
 import UpgradeCard from "@/components/upgrade-card";
 import { testEnabled } from "@/lib/env";
+import { siteConfig } from "@/lib/site";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://vibecoder.io";
+export const metadata: Metadata = {
+  title: {
+    absolute: siteConfig.title.default,
+  },
+  alternates: { canonical: "/" },
+  openGraph: { title: siteConfig.og.title, description: siteConfig.og.description },
+  twitter: { title: siteConfig.twitter.title, description: siteConfig.twitter.description },
+};
 
 const pillars = [
   {
@@ -58,11 +67,25 @@ const jsonLd = {
   "@context": "https://schema.org",
   "@graph": [
     {
+      "@type": "Organization",
+      name: "Vibecoder",
+      url: siteConfig.url,
+      logo: `${siteConfig.url}/vibe-logo.png`,
+      sameAs: ["https://github.com"],
+    },
+    {
+      "@type": "WebSite",
+      name: "Vibecoder",
+      url: siteConfig.url,
+      description:
+        "Free, open source AI coding agent for desktop and terminal. Bring your own API keys, review every diff, /undo anytime.",
+    },
+    {
       "@type": "SoftwareApplication",
       name: "Vibecoder",
       applicationCategory: "DeveloperApplication",
       operatingSystem: "macOS, Windows, Linux",
-      url: SITE_URL,
+      url: siteConfig.url,
       description:
         "Free, open source AI coding agent for desktop and terminal. Bring your own API keys, review every diff, /undo anytime.",
       softwareVersion: "1.0.0",
@@ -72,6 +95,7 @@ const jsonLd = {
         priceCurrency: "USD",
       },
       license: "https://opensource.org/licenses/MIT",
+      author: { "@type": "Organization", name: "Vibecoder" },
     },
     {
       "@type": "FAQPage",
