@@ -1577,7 +1577,7 @@ export default function ReleasesPage() {
         <li className="flex items-center justify-between rounded-xl border p-4">
           <div>
             <div className="font-semibold">Vibecoder for macOS</div>
-            <div className="text-xs opacity-70">Apple Silicon (arm64) · 1.0.0</div>
+            <div className="text-xs opacity-70 text-black">Apple Silicon (arm64) · 1.0.0</div>
           </div>
           <a href={DMG} className="btn btn-primary" download>
             Download .dmg

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { currentUser } from "@/lib/auth";
+import Wordmark from "@/components/wordmark";
 
 export default async function AppLayout({
   children,
@@ -17,10 +17,7 @@ export default async function AppLayout({
         style={{ borderColor: "var(--hairline)", background: "color-mix(in srgb, var(--bg) 75%, transparent)" }}
       >
         <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between px-6">
-          <Link href="/app" className="flex items-center gap-2 text-[17px] font-bold tracking-[-0.02em]">
-            <span aria-hidden="true" className="inline-block h-[18px] w-[18px] rounded-[5px]" style={{ background: "var(--accent)" }} />
-            vibecoder
-          </Link>
+          <Wordmark href="/app" label="Go to projects" />
           <div className="flex items-center gap-4 text-sm">
             <span className="muted">Signed in as {user.name || user.email}</span>
             <form action="/api/auth/logout" method="post">
