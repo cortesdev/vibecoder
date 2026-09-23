@@ -119,6 +119,7 @@ export async function runPrompt(
   projectId: string,
   content: string,
   modelId?: string,
+  useFreeTokens = true,
 ) {
   const project = await findOwnedProject(userId, projectId);
   if (!project) return { ok: false as const, error: "not_found" };
@@ -134,6 +135,7 @@ export async function runPrompt(
     modelId,
     prompt: trimmed,
     files,
+    useFreeTokens,
     run: async (agent) => {
       let result;
       try {
@@ -184,6 +186,9 @@ export async function runPrompt(
     usage: outcome.usage,
     usedFallback: outcome.usedFallback,
     creditsSpent: outcome.creditsSpent,
+    freeTokensUsed: outcome.freeTokensUsed,
+    freeTokensLeft: outcome.freeTokensLeft,
+    freeExhausted: outcome.freeExhausted,
     notice: outcome.notice,
   };
 }

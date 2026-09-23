@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { createTwoFilesPatch } from "diff";
-import { Download, FilePlus2, Globe, MessageCircle, MoreHorizontal, Palette, Plug, X } from "lucide-react";
+import { Download, File, FileCode, FilePlus2, FolderOpen, Globe, MoreHorizontal, Palette, Paperclip, Plug, Wallet, X } from "lucide-react";
 import FileEditor from "./editor";
 import ModelPicker, { useOutsideClose } from "@/components/app/model-picker";
 import PreviewPane from "./preview-pane";
@@ -11,13 +12,46 @@ import IntegrationsPanel from "./integrations-panel";
 import { MODELS, PROVIDER_META } from "@/lib/models";
 import type { TokenUsage } from "@/lib/agent/types";
 
-type WorkTab = "chat" | "preview" | "presets" | "integrations";
-const WORK_TABS = [
-  { id: "chat", label: "Chat", icon: MessageCircle },
+// Right-hand tools column. Chat lives in its own separate panel; everything
+// else (Files, Editor, Preview, UI Presets, Integrations) is a tab here.
+type ToolTab = "files" | "editor" | "preview" | "presets" | "integrations";
+const TOOL_TABS = [
+  { id: "files", label: "Files", icon: FolderOpen },
+  { id: "editor", label: "Editor", icon: FileCode },
   { id: "preview", label: "Preview", icon: Globe },
   { id: "presets", label: "UI Presets", icon: Palette },
   { id: "integrations", label: "Integrations", icon: Plug },
-] satisfies { id: WorkTab; label: string; icon: typeof MessageCircle }[];
+] satisfies { id: ToolTab; label: string; icon: typeof FolderOpen }[];
+
+const MODES = ["Build", "Plan", "Design"] as const;
+type RunMode = (typeof MODES)[number];
+
+interface Attachment {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  url?: string; // object URL for image thumbnails
+  dataUrl?: string; // small images only, sent with the run
+}
+
+// Composer textarea grows with its content but never past this height.
+const COMPOSER_MAX_HEIGHT = 180;
+
+function fmtSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function readAsDataUrl(f: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(f);
+  });
+}
 
 export interface ProjectFileDto {
   path: string;
@@ -70,7 +104,7 @@ const STATUS_COLOR: Record<ChangeDto["status"], string> = {
   reverted: "var(--ink-3)",
 };
 
-/** Circular session-context gauge; clicking opens the context tab. */
+/** Circular session-context gauge; clicking opens the context view. */
 function ContextRing({ pct, active, onClick }: { pct: number; active: boolean; onClick: () => void }) {
   const r = 8;
   const c = 2 * Math.PI * r;
@@ -226,12 +260,14 @@ export default function ProjectBuilder({
   initialChanges,
   initialNotice,
   balance,
+  freeTokens: initialFreeTokens,
 }: {
   projectId: string;
   initialFiles: ProjectFileDto[];
   initialChanges: ChangeDto[];
   initialNotice?: string;
   balance: number;
+  freeTokens: number;
 }) {
   const [files, setFiles] = useState<ProjectFileDto[]>(initialFiles);
   const [changes, setChanges] = useState<ChangeDto[]>(initialChanges);
@@ -239,18 +275,24 @@ export default function ProjectBuilder({
   const [content, setContent] = useState(initialFiles[0]?.content ?? "");
   const [prompt, setPrompt] = useState("");
   const [modelId, setModelId] = useState("big-pickle");
+  const [mode, setMode] = useState<RunMode>("Build");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(initialNotice ?? "");
   const [notice, setNotice] = useState(initialNotice ?? "");
+  const [freeTokens, setFreeTokens] = useState(initialFreeTokens);
+  const [useFreeTokens, setUseFreeTokens] = useState(true);
 
-  const [treeW, setTreeW] = useState(190);
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [chatW, setChatW] = useState(400);
+  const [toolTab, setToolTab] = useState<ToolTab>("editor");
 
   // Session context tracking — resets on reload (this is a per-session panel).
-  const [workTab, setWorkTab] = useState<WorkTab>("chat");
   const [tab, setTab] = useState<null | "context">(null);
   const [runs, setRuns] = useState<
-    { prompt: string; createdAt: Date; usage?: TokenUsage; creditsSpent?: number }[]
+    { prompt: string; createdAt: Date; usage?: TokenUsage; creditsSpent?: number; freeTokensUsed?: number }[]
   >([]);
   const [sessionStart] = useState(() => new Date());
 
@@ -258,6 +300,23 @@ export default function ProjectBuilder({
     () => Object.fromEntries(files.map((f) => [f.path, f.content])),
     [files],
   );
+
+  // Fresh free-wallet balance (the server prop is from first paint; runs in
+  // this session may have drained it).
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/app/wallet")
+      .then((r) => r.json().catch(() => null))
+      .then((data: { ok?: boolean; balance?: number } | null) => {
+        if (alive && data?.ok && typeof data.balance === "number") {
+          setFreeTokens(data.balance);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const totals = useMemo(
     () =>
@@ -315,11 +374,59 @@ export default function ProjectBuilder({
   function pick(path: string) {
     setSelected(path);
     setContent(filesByPath[path] ?? "");
+    setToolTab("editor");
   }
 
-  const nudgeTree = useCallback((dx: number) => {
-    setTreeW((w) => Math.min(420, Math.max(140, w + dx)));
-  }, []);
+  function autoresize() {
+    const el = boxRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const next = Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT);
+    el.style.height = `${next}px`;
+    el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT ? "auto" : "hidden";
+  }
+
+  async function attachFiles(list: FileList | null) {
+    if (!list || list.length === 0) return;
+    const added = await Promise.all(
+      Array.from(list).map(async (f, i) => {
+        const isImg = f.type.startsWith("image/");
+        let url: string | undefined;
+        let dataUrl: string | undefined;
+        try {
+          url = URL.createObjectURL(f);
+          if (isImg && f.size <= 1_500_000) {
+            dataUrl = await readAsDataUrl(f).catch(() => undefined);
+          }
+        } catch {
+          url = undefined;
+        }
+        return {
+          id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+          name: f.name,
+          type: f.type || "file",
+          size: f.size,
+          url: isImg ? url : undefined,
+          dataUrl,
+        };
+      }),
+    );
+    setAttachments((prev) => [...prev, ...added]);
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((prev) => {
+      const gone = prev.find((a) => a.id === id);
+      if (gone?.url) URL.revokeObjectURL(gone.url);
+      return prev.filter((a) => a.id !== id);
+    });
+  }
+
+  function workingLabel(): string {
+    if (busy) return mode === "Plan" ? "Planning…" : mode === "Design" ? "Designing…" : "Building…";
+    return mode;
+  }
+
   const nudgeChat = useCallback((dx: number) => {
     setChatW((w) => Math.min(640, Math.max(300, w - dx)));
   }, []);
@@ -349,13 +456,21 @@ export default function ProjectBuilder({
     e?.preventDefault();
     const text = prompt.trim();
     if (!text || busy) return;
+    const attachCount = attachments.length;
     setBusy(true);
-    setStatus("Agent is working…");
+    setStatus(mode === "Plan" ? "Planning…" : mode === "Design" ? "Designing…" : "Agent is building…");
     setNotice("");
     const res = await fetch(`/api/app/projects/${projectId}/prompt`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt: text, modelId }),
+      body: JSON.stringify({
+        prompt: text,
+        modelId,
+        useFreeTokens,
+        attachments: attachments.length
+          ? attachments.map(({ name, type, size, dataUrl }) => ({ name, type, size, dataUrl }))
+          : undefined,
+      }),
     });
     const data = (await res.json()) as {
       ok: boolean;
@@ -364,6 +479,9 @@ export default function ProjectBuilder({
       modelLabel?: string;
       usedFallback?: boolean;
       creditsSpent?: number;
+      freeTokensUsed?: number;
+      freeTokensLeft?: number;
+      freeExhausted?: boolean;
       usage?: TokenUsage;
       prompt?: { changes: ChangeDto[] };
     };
@@ -374,16 +492,38 @@ export default function ProjectBuilder({
     }
     setChanges((prev) => [...prev, ...data.prompt!.changes]);
     setPrompt("");
+    for (const a of attachments) if (a.url) URL.revokeObjectURL(a.url);
+    setAttachments([]);
     setRuns((prev) => [
       ...prev,
-      { prompt: text, createdAt: new Date(), usage: data.usage, creditsSpent: data.creditsSpent },
+      {
+        prompt: text,
+        createdAt: new Date(),
+        usage: data.usage,
+        creditsSpent: data.creditsSpent,
+        freeTokensUsed: data.freeTokensUsed,
+      },
     ]);
     const bits: string[] = [];
     bits.push(`${data.modelLabel ?? "Agent"} proposed ${data.prompt.changes.length} change(s).`);
-    if (data.creditsSpent) bits.push(`−${data.creditsSpent} credits.`);
+    if (attachCount > 0) bits.push(`with ${attachCount} attachment${attachCount === 1 ? "" : "s"}.`);
+    if (data.freeTokensUsed) {
+      bits.push(`−${data.freeTokensUsed.toLocaleString()} free tokens.`);
+      if (typeof data.freeTokensLeft === "number") setFreeTokens(data.freeTokensLeft);
+    } else if (data.creditsSpent) {
+      bits.push(`−${data.creditsSpent} credits.`);
+    }
     if (data.usedFallback) bits.push("Out of credits — ran the free model.");
     setStatus(bits.join(" "));
-    setNotice(data.notice ?? "");
+    if (data.freeExhausted) {
+      setNotice(
+        `Your free tokens are used up. Buy credits to keep using ${
+          data.modelLabel ?? "hosted models"
+        }.`,
+      );
+    } else if (data.notice) {
+      setNotice(data.notice);
+    }
   }
 
   async function act(change: ChangeDto, action: "apply" | "revert") {
@@ -424,64 +564,40 @@ export default function ProjectBuilder({
 
   return (
     <div className="flex min-h-[calc(100dvh-150px)] gap-0" style={{ alignItems: "stretch" }}>
-        {/* Workspace panel (tabs: Chat · Preview · UI Presets · Integrations) */}
+      {/* Chat — independent panel (no tabs): status · context circle · ⋯ menu */}
       <aside
+        aria-label="Chat"
         className="card flex shrink-0 flex-col overflow-hidden"
         style={{ width: chatW, minWidth: 300, maxWidth: 640 }}
-        aria-label="Workspace"
       >
         <div
-          className="flex shrink-0 flex-wrap items-center gap-1 border-b px-2 py-1.5"
-          style={{ borderColor: "var(--hairline)" }}
-          role="tablist"
-          aria-label="Workspace"
+          className="flex shrink-0 items-center justify-between gap-3 px-3 py-2.5"
+          style={{ borderBottom: "1px solid var(--hairline)" }}
         >
-          {WORK_TABS.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={workTab === t.id}
-              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] font-medium"
-              style={
-                workTab === t.id
-                  ? { background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }
-                  : { color: "var(--ink-2)", opacity: 0.75 }
-              }
-              onClick={() => setWorkTab(t.id)}
+          <h2 className="text-[13px] font-semibold">Agent</h2>
+          <div className="flex items-center gap-2">
+            <span
+              className="hidden text-[12px] sm:inline"
+              style={{ color: busy ? "var(--accent)" : "var(--ink-3)" }}
+              role="status"
             >
-              <t.icon size={14} aria-hidden="true" />
-              {t.label}
-            </button>
-          ))}
-          <div className="ml-auto flex items-center gap-1.5">
-            {workTab === "chat" && (
-              <span className="hidden text-[11px] sm:inline" style={{ color: busy ? "var(--accent)" : "var(--ink-3)" }} role="status">
-                {busy ? "working…" : pendingCount > 0 ? `${pendingCount} pending` : "idle"}
-              </span>
-            )}
+              {busy ? "working…" : pendingCount > 0 ? `${pendingCount} pending` : "idle"}
+            </span>
             <ContextRing
               pct={contextPct}
-              active={tab === "context" && workTab === "chat"}
-              onClick={() => {
-                if (workTab !== "chat") setWorkTab("chat");
-                setTab(tab === "context" ? null : "context");
-              }}
+              active={tab === "context"}
+              onClick={() => setTab(tab === "context" ? null : "context")}
             />
-            <OptionsMenu
-              onContext={() => {
-                setWorkTab("chat");
-                setTab("context");
-              }}
-              onExport={exportSession}
-            />
+            <OptionsMenu onContext={() => setTab("context")} onExport={exportSession} />
           </div>
         </div>
 
-        {workTab === "chat" ? (
-          <>
         {(status || notice) && tab !== "context" && (
-          <div className="mx-3 mt-2 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--bg-inset)" }} aria-live="polite">
+          <div
+            className="mx-3 mt-2 rounded-lg px-3 py-2 text-[13px]"
+            style={{ background: "var(--bg-inset)" }}
+            aria-live="polite"
+          >
             {status && <p style={{ color: "var(--ink-2)" }}>{status}</p>}
             {notice && (
               <p className="mt-1" style={{ color: "var(--good)" }}>
@@ -493,7 +609,10 @@ export default function ProjectBuilder({
 
         {tab === "context" ? (
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex items-center justify-between gap-2 px-3 py-2" style={{ borderBottom: "1px solid var(--hairline)" }}>
+            <div
+              className="flex items-center justify-between gap-2 px-3 py-2"
+              style={{ borderBottom: "1px solid var(--hairline)" }}
+            >
               <h3 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>
                 Context
               </h3>
@@ -563,52 +682,51 @@ export default function ProjectBuilder({
           </div>
         ) : (
           <div className="flex-1 space-y-2.5 overflow-y-auto p-3" aria-live="polite">
-
-          {changes.length === 0 && !status && (
-            <div className="px-1 pt-6 text-center">
-              <FilePlus2 size={20} aria-hidden="true" className="mx-auto mb-2" style={{ color: "var(--ink-3)" }} />
-              <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
-                Describe what you want below. The agent proposes file changes here — apply or revert each one.
-              </p>
-            </div>
-          )}
-
-          {changes.map((c) => (
-            <div key={c.id} className="rounded-xl p-3" style={{ background: "var(--bg-inset)" }}>
-              <div className="flex items-center justify-between gap-2">
-                <span className="mono truncate text-[12.5px]">{c.path}</span>
-                <span
-                  className="text-[11px] font-semibold uppercase tracking-wide"
-                  style={{ color: STATUS_COLOR[c.status] }}
-                >
-                  {c.status}
-                </span>
+            {changes.length === 0 && !status && (
+              <div className="px-1 pt-6 text-center">
+                <FilePlus2 size={20} aria-hidden="true" className="mx-auto mb-2" style={{ color: "var(--ink-3)" }} />
+                <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+                  Describe what you want below. The agent proposes file changes here — apply or revert each one.
+                </p>
               </div>
-              <div className="mt-2 flex gap-2">
-                {c.status === "pending" && (
-                  <button type="button" className="btn btn-primary btn-sm" onClick={() => act(c, "apply")} disabled={busy}>
-                    Apply
-                  </button>
-                )}
-                {c.status === "applied" && (
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(c, "revert")} disabled={busy}>
-                    Revert
-                  </button>
-                )}
-                {c.status === "reverted" && (
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(c, "apply")} disabled={busy}>
-                    Re-apply
-                  </button>
-                )}
+            )}
+
+            {changes.map((c) => (
+              <div key={c.id} className="rounded-xl p-3" style={{ background: "var(--bg-inset)" }}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="mono truncate text-[12.5px]">{c.path}</span>
+                  <span
+                    className="text-[11px] font-semibold uppercase tracking-wide"
+                    style={{ color: STATUS_COLOR[c.status] }}
+                  >
+                    {c.status}
+                  </span>
+                </div>
+                <div className="mt-2 flex gap-2">
+                  {c.status === "pending" && (
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => act(c, "apply")} disabled={busy}>
+                      Apply
+                    </button>
+                  )}
+                  {c.status === "applied" && (
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(c, "revert")} disabled={busy}>
+                      Revert
+                    </button>
+                  )}
+                  {c.status === "reverted" && (
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(c, "apply")} disabled={busy}>
+                      Re-apply
+                    </button>
+                  )}
+                </div>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-[12px] hover:opacity-70" style={{ color: "var(--ink-3)" }}>
+                    Diff
+                  </summary>
+                  <DiffLines c={c} />
+                </details>
               </div>
-              <details className="mt-2">
-                <summary className="cursor-pointer text-[12px] hover:opacity-70" style={{ color: "var(--ink-3)" }}>
-                  Diff
-                </summary>
-                <DiffLines c={c} />
-              </details>
-            </div>
-          ))}
+            ))}
           </div>
         )}
 
@@ -631,6 +749,27 @@ export default function ProjectBuilder({
           />
           <div className="mt-2 flex items-center gap-2">
             <ModelPicker value={modelId} onChange={setModelId} balance={balance} />
+            {freeTokens > 0 ? (
+              <button
+                type="button"
+                className="chip"
+                onClick={() => setUseFreeTokens((v) => !v)}
+                aria-pressed={useFreeTokens}
+                title={
+                  useFreeTokens
+                    ? "Hosted runs are paid from your free-token wallet first."
+                    : "Free-token wallet off — hosted runs bill credits."
+                }
+              >
+                <Wallet size={13} aria-hidden="true" />
+                <span className="mono">{freeTokens.toLocaleString()}</span>
+                <span className="hidden sm:inline">free</span>
+              </button>
+            ) : freeTokens === 0 && currentModel.tier === "credits" ? (
+              <Link href="/agent/settings" className="chip" title="Buy credits in Settings">
+                Buy credits
+              </Link>
+            ) : null}
             <span className="hidden text-[11px] sm:inline" style={{ color: "var(--ink-3)" }}>
               ↩
             </span>
@@ -639,79 +778,103 @@ export default function ProjectBuilder({
             </button>
           </div>
         </form>
+      </aside>
 
-        </>
-        ) : workTab === "preview" ? (
+      <Sash onDelta={nudgeChat} ariaLabel="Resize chat" />
+
+      {/* Tools — all other tabs (Files, Editor, Preview, UI Presets, Integrations) */}
+      <aside
+        className="card flex min-w-0 flex-1 flex-col overflow-hidden"
+        aria-label="Workspace"
+      >
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-1 border-b px-2 py-1.5"
+          style={{ borderColor: "var(--hairline)" }}
+          role="tablist"
+          aria-label="Workspace"
+        >
+          {TOOL_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={toolTab === t.id}
+              className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12.5px] font-medium"
+              style={
+                toolTab === t.id
+                  ? { background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }
+                  : { color: "var(--ink-2)", opacity: 0.75 }
+              }
+              onClick={() => setToolTab(t.id)}
+            >
+              <t.icon size={14} aria-hidden="true" />
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {toolTab === "files" ? (
+          <div className="flex min-h-0 flex-1 flex-col" aria-label="Project files">
+            <div
+              className="flex items-center justify-between px-3 py-2"
+              style={{ borderBottom: "1px solid var(--hairline)" }}
+            >
+              <h2 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>
+                Files
+              </h2>
+              <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
+                {files.length}
+              </span>
+            </div>
+            <ul className="flex-1 overflow-y-auto p-2">
+              {files.map((f) => (
+                <li key={f.path}>
+                  <button
+                    type="button"
+                    onClick={() => pick(f.path)}
+                    className="mono w-full truncate rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5"
+                    aria-current={f.path === selected ? "true" : undefined}
+                    style={
+                      f.path === selected
+                        ? { background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }
+                        : { color: "var(--ink-2)" }
+                    }
+                  >
+                    {f.path}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : toolTab === "editor" ? (
+          <div className="flex min-h-0 flex-1 flex-col" aria-label="Editor">
+            <div
+              className="flex shrink-0 items-center justify-between gap-3 px-4 py-2.5"
+              style={{ borderBottom: "1px solid var(--hairline)" }}
+            >
+              <span className="mono truncate text-[12.5px]" style={{ color: "var(--ink-2)" }}>
+                {selected || "select a file"}
+              </span>
+              <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={!selected || busy}>
+                Save
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              {selected ? (
+                <FileEditor path={selected} value={content} onChange={setContent} />
+              ) : (
+                <p className="muted p-4 text-sm">Select a file to edit it.</p>
+              )}
+            </div>
+          </div>
+        ) : toolTab === "preview" ? (
           <PreviewPane files={filesByPath} />
-        ) : workTab === "presets" ? (
+        ) : toolTab === "presets" ? (
           <UiPresetsPanel projectId={projectId} onApplied={handlePresetApplied} />
         ) : (
           <IntegrationsPanel />
         )}
       </aside>
-      
-      {/* Files tree */}
-      <aside
-        aria-label="Project files"
-        className="card flex shrink-0 flex-col overflow-hidden"
-        style={{ width: treeW, minWidth: 140, maxWidth: 420 }}
-      >
-        <div className="flex items-center justify-between px-3 py-2.5" style={{ borderBottom: "1px solid var(--hairline)" }}>
-          <h2 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>
-            Files
-          </h2>
-          <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
-            {files.length}
-          </span>
-        </div>
-        <ul className="flex-1 overflow-y-auto p-2">
-          {files.map((f) => (
-            <li key={f.path}>
-              <button
-                type="button"
-                onClick={() => pick(f.path)}
-                className="mono w-full truncate rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5"
-                aria-current={f.path === selected ? "true" : undefined}
-                style={
-                  f.path === selected
-                    ? { background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }
-                    : { color: "var(--ink-2)" }
-                }
-              >
-                {f.path}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
-
-      <Sash onDelta={nudgeTree} ariaLabel="Resize file tree" />
-
-      {/* Editor column */}
-      <section className="card flex min-w-0 flex-1 flex-col overflow-hidden" aria-label="Editor">
-        <div
-          className="flex shrink-0 items-center justify-between gap-3 px-4 py-2.5"
-          style={{ borderBottom: "1px solid var(--hairline)" }}
-        >
-          <span className="mono truncate text-[12.5px]" style={{ color: "var(--ink-2)" }}>
-            {selected || "select a file"}
-          </span>
-          <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={!selected || busy}>
-            Save
-          </button>
-        </div>
-        <div className="min-h-[420px] flex-1 lg:min-h-0">
-          {selected ? (
-            <FileEditor path={selected} value={content} onChange={setContent} />
-          ) : (
-            <p className="muted p-4 text-sm">Select a file to edit it.</p>
-          )}
-        </div>
-      </section>
-
-      <Sash onDelta={nudgeChat} ariaLabel="Resize agent panel" />
-
-    
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { getModel, DEFAULT_MODEL_ID, FREE_FALLBACK_ID, type ModelDef } from "./models";
 import { debitForRun, refundRun } from "./credits";
+import { FREE_TOKENS_PER_CREDIT, ensureFreeWallet, spendFreeTokens } from "./freewallet";
 import { LlmAgent, type LlmConfig } from "./agent/llm";
 import { MockAgent } from "./agent/mock";
 import type { Agent } from "./agent/types";
@@ -23,6 +24,10 @@ export interface RunOutcome {
   modelLabel?: string;
   usedFallback?: boolean;
   creditsSpent?: number;
+  // Free-token wallet accounting (free-first runs).
+  freeTokensUsed?: number;
+  freeTokensLeft?: number;
+  freeExhausted?: boolean;
   notice?: string;
 }
 
@@ -98,6 +103,8 @@ export async function runModelPrompt(input: {
   modelId: string | undefined;
   prompt: string;
   files: Record<string, string>;
+  /** Pay for hosted runs from the free-token wallet before credits (default). */
+  useFreeTokens?: boolean;
   run: (agent: Agent) => Promise<import("./agent/types").AgentResult>;
 }): Promise<RunOutcome> {
   const requested = input.modelId ? getModel(input.modelId) : null;
@@ -120,6 +127,74 @@ export async function runModelPrompt(input: {
 
   // --- Credits path --------------------------------------------------------
   const ref = `${input.projectId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+
+  // Free-token wallet first: while the wallet covers the run's token price,
+  // the wallet pays and no credits are debited. A wallet that only part-covers
+  // the run is left untouched — draining it here would burn free tokens on a
+  // run that credits (or the free fallback model) end up paying for anyway.
+  // ensureFreeWallet grants the sign-up allowance on first use, so the free
+  // tokens exist even if the user never opened a page that created the wallet.
+  if (input.useFreeTokens !== false) {
+    const wallet = await ensureFreeWallet(input.userId);
+    const need = model.cost * FREE_TOKENS_PER_CREDIT;
+    if (wallet.balance >= need) {
+      const { agent } = await resolveAgent(input.userId, model);
+      if (!agent) return { ok: false, error: "Model unavailable." };
+      try {
+        const { edits, usage } = await input.run(agent);
+        // Spend what the run actually used, capped at the wallet's coverage
+        // for this prompt (never overdraw, never a zero-token no-op).
+        const used = Math.max(1, Math.min(need, usage?.totalTokens ?? need));
+        const left = await spendFreeTokens(input.userId, used, `${ref}:free`, model.label);
+        if (left !== null) {
+          return {
+            ok: true,
+            edits,
+            usage,
+            modelId: model.id,
+            modelLabel: model.label,
+            freeTokensUsed: used,
+            freeTokensLeft: left,
+            freeExhausted: left <= 0,
+          };
+        }
+        // The wallet shrank between the check and the spend (a concurrent run
+        // got there first), so the spend was refused. The work is already
+        // delivered, so bill credits for it — the ref keeps this idempotent —
+        // and never report the wallet as exhausted off a refused spend.
+        const charged = await debitForRun({
+          userId: input.userId,
+          cost: model.cost,
+          ref,
+          note: model.label,
+        });
+        if (charged) {
+          return {
+            ok: true,
+            edits,
+            usage,
+            modelId: model.id,
+            modelLabel: model.label,
+            creditsSpent: model.cost,
+          };
+        }
+        return {
+          ok: true,
+          edits,
+          usage,
+          modelId: model.id,
+          modelLabel: model.label,
+          notice: `Your free tokens ran out mid-run, so this one went through free. Buy credits to keep using ${model.label}.`,
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : `${model.label} failed`,
+        };
+      }
+    }
+  }
+
   const debited = await debitForRun({
     userId: input.userId,
     cost: model.cost,

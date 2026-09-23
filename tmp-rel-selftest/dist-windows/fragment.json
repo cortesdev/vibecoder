@@ -1,0 +1,9 @@
+{
+  "version": "1.1.0",
+  "platforms": {
+    "windows-x86_64": "Vibecoder_x64-setup.zip"
+  },
+  "installers": [
+    "Vibecoder-x64-win.exe"
+  ]
+}

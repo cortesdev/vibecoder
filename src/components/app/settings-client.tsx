@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, KeyRound, Trash2 } from "lucide-react";
+import { Check, KeyRound, Trash2, Wallet } from "lucide-react";
 
 const KEY_PROVIDERS = [
   { id: "opencode", label: "OpenCode Zen", hint: "Free key at opencode.ai — unlocks Big Pickle, Grok Code." },
@@ -19,11 +19,15 @@ export default function SettingsClient({
   balance,
   packs,
   demoCheckout,
+  freeGranted,
+  freeBalance,
 }: {
   initialProviders: string[];
   balance: number;
   packs: Pack[];
   demoCheckout: boolean;
+  freeGranted: number;
+  freeBalance: number;
 }) {
   const [providers, setProviders] = useState<string[]>(initialProviders);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -129,6 +133,42 @@ export default function SettingsClient({
               </div>
             );
           })}
+        </div>
+      </section>
+
+      {/* Free-token wallet */}
+      <section aria-labelledby="freewallet-h">
+        <h2 id="freewallet-h" className="text-[17px] font-semibold">
+          Free tokens
+        </h2>
+        <p className="muted mt-1 text-[13.5px]">
+          A one-time sign-up allowance that pays for hosted models before credits do —
+          spent as your runs use them. Free models stay free no matter what.
+        </p>
+        <div className="card mt-4 p-4">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+            <div className="flex items-center gap-2">
+              <Wallet size={15} aria-hidden="true" style={{ color: "var(--ink-2)" }} />
+              <span className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+                Remaining
+              </span>
+              <span className="mono text-[17px] font-semibold" style={{ color: freeBalance > 0 ? "var(--good)" : "var(--ink)" }}>
+                {freeBalance.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+                Granted
+              </span>
+              <span className="mono text-[14px]">{freeGranted.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+                Used
+              </span>
+              <span className="mono text-[14px]">{(freeGranted - freeBalance).toLocaleString()}</span>
+            </div>
+          </div>
         </div>
       </section>
 

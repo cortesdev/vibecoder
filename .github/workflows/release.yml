@@ -1,0 +1,293 @@
+name: Release desktop installers
+
+# The desktop app updates itself from GitHub Releases (see
+# docs/desktop-updates.md). Pushing a v* tag is the whole release process:
+# build the bundles on each OS, sign them, publish one release, and the site's
+# /api/updates/latest picks it up within 5 minutes.
+#
+# Required repository secrets:
+#   TAURI_SIGNING_PRIVATE_KEY           minisign key (pnpm tauri signer generate)
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  optional, only if the key has one
+# Optional (each one is skipped with a notice when absent):
+#   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY
+#   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID          macOS notarization
+#   WINDOWS_CERTIFICATE, WINDOWS_CERTIFICATE_PASSWORD  Authenticode (base64 .pfx)
+#
+# Signing is not optional for the *updater* bundles: the app refuses to install
+# an update whose minisign signature does not match the public key baked into
+# the binary. platform signing (Apple/Windows) is what stops OS warnings.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)release, e.g. v1.1.0"
+        required: true
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Resolve version and channel
+        id: version
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          case "$version" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;   # v1.2.0-beta.1 → prerelease
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "releasing $version (tag $TAG)"
+
+      - name: Check the shell is releasable
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ ! -f src-tauri/tauri.conf.json ]; then
+            echo "::error title=No desktop shell::src-tauri/tauri.conf.json is missing, so a v* tag has nothing to build. Land the Tauri shell first — see docs/desktop-updates.md."
+            exit 1
+          fi
+          node -e '
+            const fs = require("node:fs");
+            const conf = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+            let version = typeof conf.version === "string" ? conf.version : null;
+            if (!version) {
+              const cargo = fs.readFileSync("src-tauri/Cargo.toml", "utf8");
+              version = (cargo.match(/^\s*version\s*=\s*"([^"]+)"/m) || [])[1] ?? null;
+            }
+            if (version !== process.env.VERSION) {
+              console.error(`::error title=Version mismatch::the tag says ${process.env.VERSION} but the app is ${version}. Bump the app version and the updater will compare them — they must match.`);
+              process.exit(1);
+            }
+            if (conf.bundle?.createUpdaterArtifacts !== "v1Compatible") {
+              console.error("::error title=Updater artifacts off::set bundle.createUpdaterArtifacts to \"v1Compatible\" in src-tauri/tauri.conf.json — the feed serves the .app.tar.gz / -setup.nsis.zip / .AppImage.tar.gz names.");
+              process.exit(1);
+            }
+          '
+
+      - name: Check the signing key exists
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEY" ]; then
+            echo "::error title=Missing updater key::TAURI_SIGNING_PRIVATE_KEY is not set. Without it the bundles cannot be signed and the app would refuse every update. Run 'pnpm tauri signer generate -w ~/.tauri/vibecoder.key' and add the key plus the public key to the repo."
+            exit 1
+          fi
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            os: macos-latest
+            targets: aarch64-apple-darwin x86_64-apple-darwin
+            bundles: app,dmg
+          - name: windows
+            os: windows-latest
+            targets: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+          - name: linux
+            os: ubuntu-22.04
+            targets: x86_64-unknown-linux-gnu
+            bundles: appimage,deb,rpm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Secrets arrive here, get copied into the job environment only when they
+      # exist, and never reach a shell command line. Unset ones must not be
+      # exported as empty strings — Tauri treats "" as a configured identity.
+      - name: Wire up the signing secrets that exist
+        env:
+          IN_TAURI_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          IN_TAURI_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          IN_APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          IN_APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          IN_APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          IN_APPLE_ID: ${{ secrets.APPLE_ID }}
+          IN_APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          IN_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          emit() { # $1 = name, $2 = value (may be multi-line, e.g. a minisign key)
+            [ -n "$2" ] || { echo "::notice title=$1::$1 is not set — that signing path is skipped"; return; }
+            { echo "$1<<__EOF__"; echo "$2"; echo "__EOF__"; } >> "$GITHUB_ENV"
+          }
+          emit TAURI_SIGNING_PRIVATE_KEY "$IN_TAURI_KEY"
+          emit TAURI_SIGNING_PRIVATE_KEY_PASSWORD "$IN_TAURI_KEY_PASSWORD"
+          emit APPLE_CERTIFICATE "$IN_APPLE_CERTIFICATE"
+          emit APPLE_CERTIFICATE_PASSWORD "$IN_APPLE_CERTIFICATE_PASSWORD"
+          emit APPLE_SIGNING_IDENTITY "$IN_APPLE_SIGNING_IDENTITY"
+          if [ -n "$IN_APPLE_ID" ] && [ -n "$IN_APPLE_PASSWORD" ] && [ -n "$IN_APPLE_TEAM_ID" ]; then
+            emit APPLE_ID "$IN_APPLE_ID"
+            emit APPLE_PASSWORD "$IN_APPLE_PASSWORD"
+            emit APPLE_TEAM_ID "$IN_APPLE_TEAM_ID"
+          else
+            echo "::warning title=Notarization skipped::APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID must all be set to notarize — macOS will show Gatekeeper warnings until they are."
+          fi
+
+      - name: Import the Windows signing certificate
+        if: runner.os == 'Windows' && env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          # Import the .pfx, then tell the bundler which identity to sign with
+          # (via --config) so no cert details live in the repository.
+          $pfx = New-TemporaryFile
+          [IO.File]::WriteAllBytes($pfx.FullName, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfx.FullName, $env:WINDOWS_CERTIFICATE_PASSWORD)
+          Import-PfxCertificate -FilePath $pfx.FullName -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText) | Out-Null
+          @{
+            bundle = @{
+              windows = @{
+                certificateThumbprint = $cert.Thumbprint
+                digestAlgorithm       = "sha256"
+                timestampUrl          = "http://timestamp.digicert.com"
+              }
+            }
+          } | ConvertTo-Json -Depth 6 | Set-Content -Path src-tauri/tauri.windows-signing.conf.json
+          Write-Output "::notice::imported the Windows signing certificate $($cert.Thumbprint)"
+
+      - name: Build and sign the bundles
+        run: |
+          set -euo pipefail
+          for target in ${{ matrix.targets }}; do
+            args=(--target "$target" --bundles ${{ matrix.bundles }})
+            if [ -f src-tauri/tauri.windows-signing.conf.json ]; then
+              args+=(--config src-tauri/tauri.windows-signing.conf.json)
+            fi
+            echo "::group::tauri build $target"
+            pnpm exec tauri build "${args[@]}"
+            echo "::endgroup::"
+          done
+
+      - name: Collect the canonical release assets
+        run: node scripts/updater-artifacts.mjs collect --search src-tauri/target --out dist-update --version ${{ needs.preflight.outputs.version }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: update-${{ matrix.name }}
+          path: dist-update
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish release
+    needs: [preflight, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: update-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Write the release notes
+        run: |
+          set -euo pipefail
+          previous="$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)"
+          {
+            echo "Vibecoder ${TAG#v} — desktop installers for macOS (Apple Silicon + Intel), Windows and Linux."
+            echo
+            echo "The app updates itself: **Vibecoder → Check for updates**. Downloads are signed; the updater verifies them before installing."
+            echo
+            echo "### Changes"
+            if [ -n "$previous" ]; then
+              git log --no-merges --pretty='- %s' "$previous..$TAG"
+            else
+              git log --no-merges --pretty='- %s' "$TAG"
+            fi
+          } > NOTES.md
+          cat NOTES.md
+
+      - name: Assemble latest.json
+        run: |
+          node scripts/updater-artifacts.mjs merge \
+            --fragments release-assets \
+            --out release-assets \
+            --version ${{ needs.preflight.outputs.version }} \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/${TAG}" \
+            --notes-file NOTES.md
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ needs.preflight.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=(--verify-tag --title "Vibecoder ${TAG#v}" --notes-file NOTES.md)
+          if [ "$PRERELEASE" = "true" ]; then
+            # Prereleases stay out of releases/latest so stable users never see them.
+            flags+=(--prerelease --latest=false)
+          else
+            flags+=(--latest)
+          fi
+          gh release create "$TAG" "${flags[@]}" release-assets/*
+          echo "::notice::released $TAG — the feed picks it up within 5 minutes"

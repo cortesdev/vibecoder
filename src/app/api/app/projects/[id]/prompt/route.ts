@@ -13,11 +13,13 @@ export async function POST(
   const body = (await req.json().catch(() => null)) as {
     prompt?: string;
     modelId?: string;
+    useFreeTokens?: boolean;
   } | null;
   const prompt = typeof body?.prompt === "string" ? body.prompt : "";
   const modelId = typeof body?.modelId === "string" && body.modelId ? body.modelId : undefined;
+  const useFreeTokens = body?.useFreeTokens !== false;
 
-  const result = await runPrompt(user.id, id, prompt, modelId);
+  const result = await runPrompt(user.id, id, prompt, modelId, useFreeTokens);
   if (!result.ok) {
     const status = result.error === "not_found" ? 404 : 400;
     return NextResponse.json(result, { status });

@@ -1,0 +1,10 @@
+{
+  "version": "1.1.0",
+  "platforms": {
+    "darwin-aarch64": "Vibecoder_aarch64.app.tar.gz"
+  },
+  "installers": [
+    "Vibecoder-arm64-mac.dmg",
+    "Vibecoder-x64-mac.dmg"
+  ]
+}

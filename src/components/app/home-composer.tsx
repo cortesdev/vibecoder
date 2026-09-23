@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUp } from "lucide-react";
+import Link from "next/link";
+import { ArrowUp, Wallet } from "lucide-react";
 import ModelPicker from "./model-picker";
+import { MODELS } from "@/lib/models";
 
 // Freebuff-style home composer: type an idea, then a short 3-question
 // narrowing interview (with option chips you can answer in one tap) before the
@@ -97,7 +99,7 @@ function nameFromPrompt(prompt: string): string {
   return (words.length > 42 ? `${words.slice(0, 42)}…` : words) || "New project";
 }
 
-export default function HomeComposer({ balance }: { balance: number }) {
+export default function HomeComposer({ balance, freeTokens: initialFreeTokens }: { balance: number; freeTokens: number }) {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [modelId, setModelId] = useState("big-pickle");
@@ -105,6 +107,24 @@ export default function HomeComposer({ balance }: { balance: number }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [freeTokens, setFreeTokens] = useState(initialFreeTokens);
+  const [useFreeTokens, setUseFreeTokens] = useState(initialFreeTokens > 0);
+
+  // Fresh wallet balance — the server prop is from first paint.
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/app/wallet")
+      .then((r) => r.json().catch(() => null))
+      .then((data: { ok?: boolean; balance?: number } | null) => {
+        if (alive && data?.ok && typeof data.balance === "number") setFreeTokens(data.balance);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const currentModel = MODELS.find((m) => m.id === modelId) ?? MODELS[0];
 
   // Narrowing interview state.
   const [narrowing, setNarrowing] = useState(false);
@@ -177,7 +197,7 @@ export default function HomeComposer({ balance }: { balance: number }) {
       const run = await fetch(`/api/app/projects/${projectId}/prompt`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: text, modelId }),
+        body: JSON.stringify({ prompt: text, modelId, useFreeTokens }),
       });
       const runData = (await run.json()) as {
         ok: boolean;
@@ -185,7 +205,10 @@ export default function HomeComposer({ balance }: { balance: number }) {
         modelLabel?: string;
         usedFallback?: boolean;
         notice?: string;
+        freeTokensUsed?: number;
+        freeTokensLeft?: number;
       };
+      if (typeof runData.freeTokensLeft === "number") setFreeTokens(runData.freeTokensLeft);
       if (!run.ok || !runData.ok) {
         // Project exists; land there and surface the error in the builder.
         router.push(`/agent/projects/${projectId}?error=${encodeURIComponent(runData.error ?? "agent failed")}`);
@@ -351,6 +374,28 @@ export default function HomeComposer({ balance }: { balance: number }) {
           </div>
 
           <ModelPicker value={modelId} onChange={setModelId} balance={balance} />
+
+          {freeTokens > 0 ? (
+            <button
+              type="button"
+              className="chip"
+              onClick={() => setUseFreeTokens((v) => !v)}
+              aria-pressed={useFreeTokens}
+              title={
+                useFreeTokens
+                  ? "Hosted runs are paid from your free-token wallet first."
+                  : "Free-token wallet off — hosted runs bill credits."
+              }
+            >
+              <Wallet size={13} aria-hidden="true" />
+              <span className="mono">{freeTokens.toLocaleString()}</span>
+              <span className="hidden sm:inline">free</span>
+            </button>
+          ) : currentModel.tier === "credits" ? (
+            <Link href="/agent/settings" className="chip" title="Buy credits in Settings">
+              Buy credits
+            </Link>
+          ) : null}
 
           <button
             type="button"
