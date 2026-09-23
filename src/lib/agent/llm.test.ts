@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { LlmAgent, llmConfigFromEnv } from "./llm";
 
-function fetchReply(reply: string) {
+function fetchReply(reply: string, usage?: Record<string, unknown>) {
   return vi.fn().mockResolvedValue({
     ok: true,
     status: 200,
     json: async () => ({
       choices: [{ message: { content: reply } }],
+      ...(usage ? { usage } : {}),
     }),
   });
 }
@@ -48,8 +49,34 @@ describe("LlmAgent.run", () => {
       ),
     );
     const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
-    const edits = await agent.run("make it blue", { "src/App.tsx": "a" });
+    const { edits } = await agent.run("make it blue", { "src/App.tsx": "a" });
     expect(edits).toEqual([{ path: "src/App.tsx", before: "a", after: "b" }]);
+    vi.unstubAllGlobals();
+  });
+
+  it("captures token usage and reasoning tokens when reported", async () => {
+    vi.stubGlobal(
+      "fetch",
+      fetchReply(
+        JSON.stringify({ edits: [{ path: "a.ts", before: "", after: "x" }] }),
+        {
+          prompt_tokens: 100,
+          completion_tokens: 42,
+          total_tokens: 142,
+          completion_tokens_details: { reasoning_tokens: 7 },
+          prompt_tokens_details: { cached_tokens: 30 },
+        },
+      ),
+    );
+    const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
+    const result = await agent.run("hi", {});
+    expect(result.usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 42,
+      totalTokens: 142,
+      reasoningTokens: 7,
+      cacheReadTokens: 30,
+    });
     vi.unstubAllGlobals();
   });
 
@@ -57,7 +84,7 @@ describe("LlmAgent.run", () => {
     const reply = '```json\n{"edits":[{"path":"a.ts","before":"","after":"x"}]}\n```';
     vi.stubGlobal("fetch", fetchReply(reply));
     const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
-    const edits = await agent.run("hi", {});
+    const { edits } = await agent.run("hi", {});
     expect(edits[0].path).toBe("a.ts");
     vi.unstubAllGlobals();
   });

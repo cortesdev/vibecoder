@@ -18,6 +18,7 @@ export interface RunOutcome {
   ok: boolean;
   error?: string;
   edits?: import("./agent/types").FileEdit[];
+  usage?: import("./agent/types").TokenUsage;
   modelId?: string;
   modelLabel?: string;
   usedFallback?: boolean;
@@ -33,13 +34,16 @@ async function keyFor(userId: string, provider: string): Promise<string | null> 
 }
 
 function platformConfig(m: ModelDef): LlmConfig | null {
-  // Platform-hosted (credits) models use VIBECODER_<PROVIDER>_API_KEY env.
+  // Platform-hosted (credits) models use VIBECODER_<PROVIDER>_API_KEY env;
+  // the opencode provider (Big Pickle / Grok Code) uses OPENCODE_API_KEY.
   const envKey =
     m.provider === "anthropic"
       ? process.env.VIBECODER_ANTHROPIC_API_KEY
       : m.provider === "openai"
         ? process.env.VIBECODER_OPENAI_API_KEY
-        : undefined;
+        : m.provider === "opencode"
+          ? process.env.OPENCODE_API_KEY ?? process.env.VIBECODER_OPENCODE_API_KEY
+          : undefined;
   if (!envKey) return null;
   return {
     apiKey: envKey,
@@ -52,28 +56,35 @@ async function resolveAgent(
   userId: string,
   model: ModelDef,
 ): Promise<{ agent: Agent | null; problem?: string }> {
-  if (model.tier === "free" || model.byok) {
+  // 1. The user's own BYO key wins when they've added one.
+  if (model.byok) {
     const key = await keyFor(userId, model.provider);
-    if (!key) {
+    if (key) {
       return {
-        agent: null,
-        problem: `${model.label} needs a free ${model.provider} API key — add it in Settings (it takes a minute).`,
+        agent: new LlmAgent({
+          apiKey: key,
+          baseUrl: PROVIDER_BASE_URL[model.provider],
+          model: model.model,
+        }),
       };
     }
+  }
+
+  // 2. Platform key fallback — lets online users run without adding a key of
+  // their own when the platform provides one (e.g. OPENCODE_API_KEY).
+  const cfg = platformConfig(model);
+  if (cfg) return { agent: new LlmAgent(cfg) };
+
+  if (model.byok || model.tier === "free") {
     return {
-      agent: new LlmAgent({
-        apiKey: key,
-        baseUrl: PROVIDER_BASE_URL[model.provider],
-        model: model.model,
-      }),
+      agent: null,
+      problem: `${model.label} needs a free ${model.provider} API key — add it in Settings (it takes a minute).`,
     };
   }
 
   // Credits tier: platform key required; if we don't have one configured,
   // degrade to the mock so the product still works end to end.
-  const cfg = platformConfig(model);
-  if (!cfg) return { agent: new MockAgent() };
-  return { agent: new LlmAgent(cfg) };
+  return { agent: new MockAgent() };
 }
 
 /**
@@ -87,7 +98,7 @@ export async function runModelPrompt(input: {
   modelId: string | undefined;
   prompt: string;
   files: Record<string, string>;
-  run: (agent: Agent) => Promise<import("./agent/types").FileEdit[]>;
+  run: (agent: Agent) => Promise<import("./agent/types").AgentResult>;
 }): Promise<RunOutcome> {
   const requested = input.modelId ? getModel(input.modelId) : null;
   const model = requested ?? getModel(DEFAULT_MODEL_ID)!;
@@ -97,8 +108,8 @@ export async function runModelPrompt(input: {
     const { agent, problem } = await resolveAgent(input.userId, model);
     if (!agent) return { ok: false, error: problem };
     try {
-      const edits = await input.run(agent);
-      return { ok: true, edits, modelId: model.id, modelLabel: model.label };
+      const { edits, usage } = await input.run(agent);
+      return { ok: true, edits, usage, modelId: model.id, modelLabel: model.label };
     } catch (err) {
       return {
         ok: false,
@@ -123,14 +134,15 @@ export async function runModelPrompt(input: {
       return {
         ok: false,
         error:
-          "Out of credits — buy more in Settings. (Free fallback also needs a free Zen key; add one and you're unblockable.)",
+          "Out of credits — buy more in Settings. (Free fallback also needs an opencode key configured; add one and you're unblockable.)",
       };
     }
     try {
-      const edits = await input.run(agent);
+      const { edits, usage } = await input.run(agent);
       return {
         ok: true,
         edits,
+        usage,
         modelId: fb.id,
         modelLabel: fb.label,
         usedFallback: true,
@@ -153,10 +165,11 @@ export async function runModelPrompt(input: {
   }
 
   try {
-    const edits = await input.run(agent);
+    const { edits, usage } = await input.run(agent);
     return {
       ok: true,
       edits,
+      usage,
       modelId: model.id,
       modelLabel: model.label,
       creditsSpent: model.cost,

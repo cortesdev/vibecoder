@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { runModelPrompt } from "./engine";
 import { isValidProjectPath, sanitizePath } from "./agent/paths";
+import { presetCss, PRESETS } from "./presets";
 
 // Minimal Vite + React + TypeScript scaffold, scaffolded as project files.
 export const SCAFFOLD: Record<string, string> = {
@@ -134,13 +135,13 @@ export async function runPrompt(
     prompt: trimmed,
     files,
     run: async (agent) => {
-      let edits;
+      let result;
       try {
-        edits = await agent.run(trimmed, files);
+        result = await agent.run(trimmed, files);
       } catch (err) {
         throw err instanceof Error ? err : new Error("agent failed");
       }
-      return edits;
+      return result;
     },
   });
 
@@ -180,6 +181,7 @@ export async function runPrompt(
     prompt,
     modelId: outcome.modelId,
     modelLabel: outcome.modelLabel,
+    usage: outcome.usage,
     usedFallback: outcome.usedFallback,
     creditsSpent: outcome.creditsSpent,
     notice: outcome.notice,
@@ -235,4 +237,46 @@ export async function saveFile(userId: string, projectId: string, rawPath: strin
     update: { content },
   });
   return { ok: true as const };
+}
+
+export const PRESET_CSS_PATH = "src/index.css";
+
+/** Apply a UI preset: rewrite src/index.css with the preset stylesheet. */
+export async function applyPreset(userId: string, projectId: string, slug: string) {
+  const project = await findOwnedProject(userId, projectId);
+  if (!project) return { ok: false as const, error: "not_found" as const };
+  const preset = PRESETS.find((p) => p.slug === slug);
+  if (!preset) return { ok: false as const, error: "unknown_preset" as const };
+  const css = presetCss(preset);
+
+  await db.projectFile.upsert({
+    where: { projectId_path: { projectId, path: PRESET_CSS_PATH } },
+    create: { projectId, path: PRESET_CSS_PATH, content: css },
+    update: { content: css },
+  });
+  return { ok: true as const, slug: preset.slug, name: preset.name, file: { path: PRESET_CSS_PATH, content: css } };
+}
+
+/** Service credentials a user has connected (counts per service only). */
+export async function listServiceKeys(userId: string): Promise<Record<string, number>> {
+  const keys = await db.serviceKey.findMany({ where: { userId }, select: { serviceSlug: true } });
+  const counts: Record<string, number> = {};
+  for (const k of keys) counts[k.serviceSlug] = (counts[k.serviceSlug] ?? 0) + 1;
+  return counts;
+}
+
+/** Add a credential for an integration. Returns the new counts. */
+export async function addServiceKey(userId: string, serviceSlug: string, key: string, label: string) {
+  const trimmed = key.trim();
+  if (!trimmed) return { ok: false as const, error: "Key is required." as const };
+  await db.serviceKey.create({ data: { userId, serviceSlug, label: label.trim() || "Primary", key: trimmed } });
+  const counts = await listServiceKeys(userId);
+  return { ok: true as const, counts };
+}
+
+/** Remove all credentials for one integration. Returns new counts. */
+export async function removeServiceKey(userId: string, serviceSlug: string) {
+  await db.serviceKey.deleteMany({ where: { userId, serviceSlug } });
+  const counts = await listServiceKeys(userId);
+  return { ok: true as const, counts };
 }

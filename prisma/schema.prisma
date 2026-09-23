@@ -53,6 +53,7 @@ model User {
   keys     UserKey[]
   wallet   CreditWallet?
   creditTxns CreditTxn[]
+  serviceKeys ServiceKey[]
 }
 
 // BYO API keys for free models (e.g. a free Z.ai key for GLM Flash).
@@ -96,6 +97,21 @@ model CreditTxn {
 
   @@unique([reason, ref])
   @@index([userId])
+}
+
+// Integrations: service credentials (API keys) a user connects from the
+// Integrations catalog. Key values server-side only, like UserKey.
+model ServiceKey {
+  id          String   @id @default(cuid())
+  userId      String
+  serviceSlug String // slug in src/lib/integrations.ts
+  label       String   @default("Primary") // e.g. "Primary", "Staging"
+  key         String
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, serviceSlug])
 }
 
 model Session {

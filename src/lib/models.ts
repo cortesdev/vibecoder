@@ -17,6 +17,8 @@ export interface ModelDef {
   model: string;
   /** Whether the user must supply their own API key for this provider. */
   byok: boolean;
+  /** Context window in tokens (for the session context meter). */
+  contextLimit: number;
   note: string;
 }
 
@@ -29,7 +31,8 @@ export const MODELS: ModelDef[] = [
     cost: 0,
     model: "big-pickle",
     byok: true,
-    note: "OpenCode Zen free stealth model — bring a free Zen key.",
+    contextLimit: 200000,
+    note: "Free code model — served by the platform, works right after sign-in.",
   },
   {
     id: "grok-code",
@@ -39,7 +42,8 @@ export const MODELS: ModelDef[] = [
     cost: 0,
     model: "grok-code",
     byok: true,
-    note: "Free Zen model for quick edits.",
+    contextLimit: 200000,
+    note: "Free Zen model for quick edits — served by the platform.",
   },
   {
     id: "glm-flash",
@@ -49,6 +53,7 @@ export const MODELS: ModelDef[] = [
     cost: 0,
     model: "glm-4.5-flash",
     byok: true,
+    contextLimit: 200000,
     note: "Z.ai free flash model — bring a free Z.ai key.",
   },
   {
@@ -59,6 +64,7 @@ export const MODELS: ModelDef[] = [
     cost: 8, // ≈ $0.80/prompt raw · billed 8 credits (50% margin)
     model: "claude-sonnet-4-5",
     byok: false,
+    contextLimit: 200000,
     note: "Best for whole features. Billed from credits.",
   },
   {
@@ -69,6 +75,7 @@ export const MODELS: ModelDef[] = [
     cost: 1, // ≈ $0.05–0.10/prompt raw · billed 1 credit
     model: "claude-haiku-4-5",
     byok: false,
+    contextLimit: 200000,
     note: "Fast small edits. Billed from credits.",
   },
   {
@@ -79,6 +86,7 @@ export const MODELS: ModelDef[] = [
     cost: 4, // ≈ $0.40/prompt raw · billed 4 credits
     model: "gpt-4o",
     byok: false,
+    contextLimit: 200000,
     note: "Balanced quality. Billed from credits.",
   },
 ];

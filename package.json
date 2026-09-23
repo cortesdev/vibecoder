@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && node scripts/copy-esbuild-wasm.mjs",
     "turso:set-env": "echo ok"
   },
   "dependencies": {
@@ -17,6 +17,7 @@
     "@prisma/adapter-libsql": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "diff": "^9.0.0",
+    "esbuild-wasm": "^0.28.2",
     "lucide-react": "^1.47.0",
     "next": "16.3.5",
     "react": "19.2.8",

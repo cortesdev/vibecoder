@@ -62,7 +62,7 @@ export default function ModelPicker({
           aria-label="Select model"
         >
           <p className="px-2 pb-1 pt-2 text-[12px]" style={{ color: "var(--ink-3)" }}>
-            Free — bring your own key (Settings)
+            Free — works right after sign-in
           </p>
           {free.map((m) => (
             <button

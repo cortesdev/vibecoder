@@ -1,4 +1,4 @@
-import type { Agent, FileEdit, Files } from "./types";
+import type { Agent, AgentResult, FileEdit, Files } from "./types";
 import { isValidProjectPath, sanitizePath } from "./paths";
 
 const SYSTEM_PROMPT = `You are the Vibecoder coding agent. You edit files in a
@@ -56,7 +56,7 @@ function parseEditsReply(reply: string): FileEdit[] {
 export class LlmAgent implements Agent {
   constructor(private config: LlmConfig) {}
 
-  async run(prompt: string, files: Files): Promise<FileEdit[]> {
+  async run(prompt: string, files: Files): Promise<AgentResult> {
     const fileList = Object.keys(files)
       .map((p) => `\n--- ${p} ---\n${files[p]}`)
       .join("");
@@ -80,9 +80,26 @@ export class LlmAgent implements Agent {
 
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[];
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+        completion_tokens_details?: { reasoning_tokens?: number };
+        prompt_tokens_details?: { cached_tokens?: number };
+      };
     };
     const reply = data.choices?.[0]?.message?.content ?? "";
     if (!reply.trim()) throw new Error("agent API returned empty content");
-    return parseEditsReply(reply);
+    const edits = parseEditsReply(reply);
+    const usage = data.usage?.total_tokens
+      ? {
+          inputTokens: data.usage.prompt_tokens ?? 0,
+          outputTokens: data.usage.completion_tokens ?? 0,
+          totalTokens: data.usage.total_tokens ?? 0,
+          reasoningTokens: data.usage.completion_tokens_details?.reasoning_tokens ?? 0,
+          cacheReadTokens: data.usage.prompt_tokens_details?.cached_tokens ?? 0,
+        }
+      : undefined;
+    return { edits, usage };
   }
 }

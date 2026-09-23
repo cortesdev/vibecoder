@@ -7,7 +7,7 @@ import { isValidProjectPath, sanitizePath } from "./paths";
  * appending an obviously-marked comment containing the prompt.
  */
 export class MockAgent implements Agent {
-  async run(prompt: string, files: Files): Promise<FileEdit[]> {
+  async run(prompt: string, files: Files) {
     const path =
       Object.keys(files).find((p) => /App\.(tsx|jsx)$/.test(p)) ??
       Object.keys(files)[0] ??
@@ -24,7 +24,7 @@ export class MockAgent implements Agent {
       before,
       after,
     };
-    if (!isValidProjectPath(edit.path)) return [];
-    return after === before ? [] : [edit];
+    if (!isValidProjectPath(edit.path)) return { edits: [] };
+    return after === before ? { edits: [] } : { edits: [edit] };
   }
 }
