@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vibecoder.io — Pricing & Credits</title>
+<style>
+  :root {
+    --bg: #fbfbfd;
+    --surface: #ffffff;
+    --tonal: #f5f5f7;
+    --ink: #1d1d1f;
+    --ink-2: #6e6e73;
+    --ink-3: #86868b;
+    --hairline: rgba(0, 0, 0, 0.08);
+    --accent: #0071e3;
+    --accent-press: #0060c0;
+    --good: #1d7a36;
+    --good-bg: #e8f4ec;
+    --warn: #b25000;
+    --warn-bg: #fdf0e5;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 17px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+  /* ---------- Nav ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 50;
+    height: 52px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 max(24px, calc(50% - 588px));
+    background: rgba(255,255,255,0.72);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid var(--hairline);
+  }
+  .nav-brand { font-weight: 700; font-size: 19px; letter-spacing: -0.02em; color: var(--ink); }
+  .nav-links { display: flex; align-items: center; gap: 28px; }
+  .nav-links a:not(.btn) { color: var(--ink-2); font-size: 13.5px; }
+  .nav-links a:not(.btn):hover { color: var(--ink); text-decoration: none; }
+  .nav-toggle { display: none; background: none; border: 0; cursor: pointer; padding: 8px; }
+  .nav-toggle span { display: block; width: 18px; height: 1.5px; background: var(--ink); margin: 4px 0; transition: transform 200ms ease, opacity 200ms ease; }
+  .nav.open .nav-toggle span:nth-child(1) { transform: translateY(5.5px) rotate(45deg); }
+  .nav.open .nav-toggle span:nth-child(2) { opacity: 0; }
+  .nav.open .nav-toggle span:nth-child(3) { transform: translateY(-5.5px) rotate(-45deg); }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border-radius: 980px; border: 0; cursor: pointer;
+    font-family: inherit; font-size: 15px; font-weight: 500;
+    padding: 10px 20px;
+    transition: background-color 150ms ease, transform 150ms ease, opacity 150ms ease;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #0077ed; }
+  .btn-primary:active { background: var(--accent-press); }
+  .btn-quiet { background: rgba(0, 113, 227, 0.1); color: var(--accent); }
+  .btn-quiet:hover { background: rgba(0, 113, 227, 0.16); }
+  .btn-ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.14); }
+  .btn-ghost:hover { background: rgba(0,0,0,0.03); }
+  .btn-sm { font-size: 13px; padding: 6px 14px; }
+
+  /* ---------- Layout ---------- */
+  section { padding: 88px 24px; }
+  .wrap { max-width: 1176px; margin: 0 auto; }
+  .eyebrow { color: var(--accent); font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 12px; }
+  h1 { font-size: clamp(40px, 6vw, 64px); line-height: 1.05; letter-spacing: -0.025em; font-weight: 700; }
+  h2 { font-size: clamp(28px, 4vw, 44px); line-height: 1.1; letter-spacing: -0.02em; font-weight: 700; }
+  h3 { font-size: 21px; font-weight: 600; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-2); font-size: 19px; max-width: 640px; margin-top: 14px; }
+  .center { text-align: center; }
+  .center .sub { margin-left: auto; margin-right: auto; }
+
+  /* ---------- Hero ---------- */
+  .hero { padding-top: 72px; padding-bottom: 40px; }
+  .hero h1 { max-width: 900px; margin: 0 auto; }
+  .hero .cta-row { display: flex; gap: 14px; justify-content: center; margin-top: 30px; flex-wrap: wrap; }
+  .hero-note { color: var(--ink-3); font-size: 14px; margin-top: 14px; }
+
+  /* ---------- Toggle ---------- */
+  .billing-toggle-wrap { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 36px; }
+  .billing-label { font-size: 15px; color: var(--ink-2); transition: color 150ms ease; cursor: pointer; }
+  .billing-label.on { color: var(--ink); font-weight: 600; }
+  .switch {
+    position: relative; width: 51px; height: 31px; border-radius: 980px; border: 0; cursor: pointer;
+    background: var(--accent); transition: background-color 200ms ease;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%;
+    background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .switch[aria-checked="false"] { background: rgba(0,0,0,0.18); }
+  .switch[aria-checked="false"]::after { transform: translateX(0); }
+  .switch[aria-checked="true"]::after { transform: translateX(20px); }
+  .save-badge { font-size: 12px; font-weight: 600; color: var(--good); background: var(--good-bg); border-radius: 980px; padding: 3px 10px; }
+
+  /* ---------- Plans ---------- */
+  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 22px; max-width: 980px; margin: 44px auto 0; align-items: stretch; }
+  .plan {
+    background: var(--surface); border-radius: 20px; padding: 34px 30px;
+    display: flex; flex-direction: column; gap: 0;
+    box-shadow: inset 0 0 0 1px var(--hairline);
+    transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 300ms ease;
+  }
+  .plan:hover { transform: translateY(-3px); box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12), 0 18px 40px rgba(0,0,0,0.07); }
+  .plan-featured { background: var(--ink); color: #fff; }
+  .plan-featured .plan-tagline, .plan-featured .plan-price-note, .plan-featured .plan-feature { color: rgba(255,255,255,0.72); }
+  .plan-featured .plan-feature svg { color: #30d158; }
+  .plan-featured .btn-quiet { background: rgba(255,255,255,0.14); color: #fff; }
+  .plan-featured .btn-quiet:hover { background: rgba(255,255,255,0.22); }
+  .plan-head { display: flex; align-items: center; justify-content: space-between; }
+  .plan-name { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+  .plan-badge { font-size: 12px; font-weight: 600; color: #fff; background: var(--accent); border-radius: 980px; padding: 3px 11px; }
+  .plan-tagline { color: var(--ink-2); font-size: 15px; margin-top: 6px; }
+  .plan-price { display: flex; align-items: baseline; gap: 6px; margin-top: 22px; min-height: 58px; }
+  .plan-amount { font-size: 46px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+  .plan-per { color: var(--ink-3); font-size: 15px; }
+  .plan-featured .plan-per { color: rgba(255,255,255,0.6); }
+  .plan-price-note { color: var(--ink-3); font-size: 13px; margin-top: 6px; min-height: 18px; }
+  .plan .btn { width: 100%; margin-top: 20px; }
+  .plan-features { list-style: none; margin-top: 26px; display: flex; flex-direction: column; gap: 12px; }
+  .plan-feature { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; color: var(--ink-2); }
+  .plan-feature svg { flex: none; margin-top: 3px; color: var(--good); }
+  .plan-feature strong { color: inherit; font-weight: 600; }
+  .plan-featured .plan-feature strong { color: #fff; }
+
+  /* ---------- Cost table ---------- */
+  .cost-table { max-width: 860px; margin: 44px auto 0; background: var(--surface); border-radius: 20px; box-shadow: inset 0 0 0 1px var(--hairline); overflow: hidden; }
+  .cost-row { display: grid; grid-template-columns: 1.4fr 1fr 1.6fr; gap: 12px; align-items: center; padding: 18px 28px; }
+  .cost-row + .cost-row { border-top: 1px solid var(--hairline); }
+  .cost-row.head { background: var(--tonal); padding-block: 13px; }
+  .cost-row.head div { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+  .cost-action { font-weight: 600; }
+  .cost-action small { display: block; font-weight: 400; color: var(--ink-3); font-size: 13px; margin-top: 2px; }
+  .cost-num { display: inline-flex; align-items: baseline; gap: 5px; font-weight: 700; font-size: 17px; }
+  .cost-num .c { color: var(--accent); font-size: 13px; font-weight: 600; }
+  .cost-when { color: var(--ink-2); font-size: 14px; }
+
+  /* ---------- Simulator ---------- */
+  .sim-band { background: var(--ink); color: #fff; }
+  .sim-band .sub { color: rgba(255,255,255,0.72); }
+  .sim { display: grid; grid-template-columns: 1.25fr 1fr; gap: 26px; max-width: 1040px; margin: 48px auto 0; }
+  .sim-panel { background: rgba(255,255,255,0.06); border-radius: 20px; padding: 28px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  @media (prefers-reduced-transparency: reduce) { .sim-panel { background: #2a2a2c; backdrop-filter: none; } }
+  .sim-actions { display: flex; flex-direction: column; gap: 10px; }
+  .sim-action {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    width: 100%; text-align: left; cursor: pointer; font-family: inherit;
+    background: rgba(255,255,255,0.08); border: 0; border-radius: 12px; color: #fff;
+    padding: 14px 18px; font-size: 15px;
+    transition: background-color 150ms ease, transform 150ms ease;
+  }
+  .sim-action:hover { background: rgba(255,255,255,0.14); }
+  .sim-action:active { transform: scale(0.98); }
+  .sim-action:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+  .sim-action .cost { font-weight: 700; white-space: nowrap; }
+  .sim-action .cost small { font-weight: 400; opacity: 0.6; font-size: 12px; }
+  .sim-action kbd {
+    font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    background: rgba(255,255,255,0.12); border-radius: 5px; padding: 2px 7px; margin-left: 8px;
+  }
+  .sim-status { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .sim-meter { height: 6px; border-radius: 980px; background: rgba(255,255,255,0.14); overflow: hidden; }
+  .sim-meter-fill {
+    height: 100%; width: 100%; border-radius: 980px;
+    background: #30d158;
+    transition: width 500ms cubic-bezier(0.22, 1, 0.36, 1), background-color 300ms ease;
+  }
+  .sim-meter-fill.warn { background: #ff9f0a; }
+  .sim-meter-fill.out { background: #ff453a; }
+  .sim-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; color: rgba(255,255,255,0.72); }
+  .sim-balance { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; color: #fff; line-height: 1.1; }
+  .sim-balance small { font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.6); margin-left: 6px; }
+  .sim-note { font-size: 12.5px; color: rgba(255,255,255,0.55); line-height: 1.5; }
+  .sim-refill { display: flex; align-items: center; gap: 8px; font-size: 13px; color: rgba(255,255,255,0.72); margin-top: 4px; }
+  .sim-refill .dot { width: 7px; height: 7px; border-radius: 50%; background: #30d158; animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .sim-log { margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.12); padding-top: 14px; display: flex; flex-direction: column; gap: 7px; max-height: 150px; overflow-y: auto; }
+  .sim-log-line { font-size: 12.5px; color: rgba(255,255,255,0.65); display: flex; gap: 8px; animation: rise 300ms cubic-bezier(0.22, 1, 0.36, 1); }
+  .sim-log-line .t { color: rgba(255,255,255,0.4); flex: none; font-variant-numeric: tabular-nums; }
+  .sim-log-line.refund .delta { color: #30d158; }
+  .sim-log-line.blocked .delta { color: #ff453a; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  /* ---------- In-product UI previews ---------- */
+  .ui-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 22px; max-width: 1080px; margin: 48px auto 0; }
+  .ui-card { background: var(--surface); border-radius: 20px; box-shadow: inset 0 0 0 1px var(--hairline); overflow: hidden; }
+  .ui-card-head { padding: 22px 24px 0; }
+  .ui-card-head h3 { font-size: 17px; }
+  .ui-card-head p { color: var(--ink-2); font-size: 14px; margin-top: 5px; }
+  .ui-card-body { padding: 20px 24px 24px; }
+
+  .chip-row { display: flex; align-items: center; justify-content: space-between; background: var(--tonal); border-radius: 12px; padding: 13px 16px; }
+  .chip-label { font-size: 13.5px; font-weight: 600; }
+  .chip-amount { font-size: 13.5px; color: var(--ink-2); }
+  .chip-amount b { color: var(--ink); font-weight: 700; }
+
+  .meter-wrap { margin-top: 16px; }
+  .meter-top { display: flex; justify-content: space-between; font-size: 13px; color: var(--ink-2); margin-bottom: 8px; }
+  .meter { height: 8px; border-radius: 980px; background: rgba(0,0,0,0.07); overflow: hidden; }
+  .meter-fill { height: 100%; border-radius: 980px; background: var(--good); width: 80%; transition: width 500ms cubic-bezier(0.22, 1, 0.36, 1), background-color 300ms ease; }
+  .meter-fill.warn { background: #ff9f0a; }
+  .meter-fill.out { background: #ff453a; }
+  .meter-caption { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; line-height: 1.5; }
+
+  .out-state { background: var(--warn-bg); border-radius: 14px; padding: 18px; }
+  .out-state h4 { font-size: 15px; font-weight: 600; color: var(--warn); }
+  .out-state p { font-size: 14px; color: var(--ink-2); margin: 6px 0 14px; line-height: 1.5; }
+  .out-state .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .ghost-link { background: none; border: 0; font-family: inherit; font-size: 14px; color: var(--ink-2); cursor: pointer; padding: 8px 4px; }
+  .ghost-link:hover { color: var(--ink); }
+
+  /* ---------- FAQ ---------- */
+  .faq { max-width: 760px; margin: 44px auto 0; }
+  .faq details { border-bottom: 1px solid var(--hairline); }
+  .faq summary {
+    cursor: pointer; list-style: none; padding: 20px 4px; font-size: 17px; font-weight: 500;
+    display: flex; justify-content: space-between; align-items: center; gap: 16px;
+    transition: color 150ms ease;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: ""; flex: none; width: 9px; height: 9px; border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3); transform: rotate(45deg); transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1); margin-top: -4px; }
+  .faq details[open] summary::after { transform: rotate(225deg); margin-top: 4px; }
+  .faq .a { padding: 0 4px 22px; color: var(--ink-2); font-size: 16px; max-width: 62ch; }
+
+  /* ---------- Final CTA ---------- */
+  .cta-band { background: var(--surface); border-top: 1px solid var(--hairline); text-align: center; }
+
+  /* ---------- Footer ---------- */
+  footer { background: var(--tonal); padding: 40px 24px 56px; }
+  .foot { max-width: 1176px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 28px; justify-content: space-between; align-items: flex-start; }
+  .foot-brand { font-weight: 700; letter-spacing: -0.02em; }
+  .foot-note { color: var(--ink-3); font-size: 13px; max-width: 380px; margin-top: 8px; }
+  .foot-links { display: flex; gap: 22px; flex-wrap: wrap; }
+  .foot-links a { color: var(--ink-2); font-size: 13px; }
+
+  /* ---------- Modal ---------- */
+  .scrim {
+    position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,0.4);
+    display: none; align-items: center; justify-content: center; padding: 20px;
+  }
+  .scrim.open { display: flex; animation: fadeIn 200ms ease; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal {
+    background: var(--surface); border-radius: 20px; max-width: 440px; width: 100%;
+    padding: 30px; position: relative;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.25);
+    animation: pop 250ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: none; } }
+  .modal h3 { font-size: 22px; letter-spacing: -0.01em; }
+  .modal .sub { font-size: 15px; margin-top: 8px; }
+  .modal-x {
+    position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; border-radius: 50%;
+    border: 0; cursor: pointer; background: var(--tonal); color: var(--ink-2); font-size: 15px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal-x:hover { background: rgba(0,0,0,0.09); color: var(--ink); }
+  .modal .stack { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+  .upsell-points { list-style: none; margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+  .upsell-points li { display: flex; gap: 10px; font-size: 14.5px; color: var(--ink-2); }
+  .upsell-points svg { flex: none; margin-top: 3px; color: var(--good); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+    html { scroll-behavior: auto; }
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 860px) {
+    .sim { grid-template-columns: 1fr; }
+    .cost-row { grid-template-columns: 1fr auto; }
+    .cost-row .cost-when { display: none; }
+    .cost-row.head div:nth-child(3) { display: none; }
+  }
+  @media (max-width: 700px) {
+    section { padding: 64px 20px; }
+    .nav-links {
+      display: none; position: absolute; top: 52px; left: 0; right: 0;
+      flex-direction: column; align-items: stretch; gap: 0;
+      background: rgba(255,255,255,0.97); border-bottom: 1px solid var(--hairline);
+      padding: 10px 24px 18px;
+    }
+    .nav.open .nav-links { display: flex; }
+    .nav-links a:not(.btn) { padding: 13px 0; font-size: 16px; border-bottom: 1px solid var(--hairline); }
+    .nav-links .btn { margin-top: 14px; }
+    .nav-toggle { display: block; }
+    .billing-toggle-wrap { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ NAV ============ -->
+<nav class="nav" id="nav" aria-label="Main">
+  <a href="#" class="nav-brand">Vibecoder</a>
+  <button class="nav-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Open menu" id="nav-toggle">
+    <span></span><span></span><span></span>
+  </button>
+  <div class="nav-links" id="nav-links">
+    <a href="#">Product</a>
+    <a href="#pricing" aria-current="page">Pricing</a>
+    <a href="#faq">FAQ</a>
+    <a href="#">Sign in</a>
+    <a href="#" class="btn btn-primary btn-sm" role="button">Start free</a>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header class="hero center">
+  <div class="wrap">
+    <p class="eyebrow">Free as in yours.</p>
+    <h1>Credits that make sense.</h1>
+    <p class="sub">Every action has a published price. Every day starts fresh. The free tier is a real product, and Pro just means more of it — never ads, never region locks.</p>
+    <div class="cta-row">
+      <a href="#simulator" class="btn btn-primary">Try the credit system below</a>
+      <a href="#faq" class="btn btn-ghost">Read the FAQ</a>
+    </div>
+    <p class="hero-note">Free tier includes 30 credits every day. No credit card.</p>
+  </div>
+</header>
+
+<!-- ============ PLANS ============ -->
+<section id="pricing" aria-labelledby="plans-h">
+  <div class="wrap">
+    <div class="center">
+      <h2 id="plans-h">Simple pricing. Published rules.</h2>
+      <p class="sub">Two plans. The credit prices below are the same table our system uses — if they ever change, we announce it first and protect projects already built.</p>
+    </div>
+
+    <div class="billing-toggle-wrap" role="group" aria-label="Billing period">
+      <button type="button" class="billing-label on" id="label-monthly" aria-pressed="true">Monthly</button>
+      <button type="button" class="switch" role="switch" aria-checked="false" aria-label="Yearly billing (save 20 percent)" id="billing-switch"></button>
+      <button type="button" class="billing-label" id="label-yearly" aria-pressed="false">Yearly <span class="save-badge">Save 20%</span></button>
+    </div>
+
+    <div class="plans">
+      <!-- Free -->
+      <article class="plan" aria-label="Free plan">
+        <div class="plan-head"><h3 class="plan-name">Free</h3></div>
+        <p class="plan-tagline">A real product, not a demo.</p>
+        <div class="plan-price"><span class="plan-amount">$0</span><span class="plan-per">forever</span></div>
+        <p class="plan-price-note">No card. No ads. Ever.</p>
+        <a href="#" class="btn btn-ghost">Start on Free</a>
+        <ul class="plan-features">
+          <li class="plan-feature"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>30 credits daily</strong>, refills at 00:00 UTC</span></li>
+          <li class="plan-feature"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Every core feature — nothing crippled</span></li>
+          <li class="plan-feature"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Standard models, honest limits</span></li>
+          <li class="plan-feature"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>One-click code export</span></li>
+        </ul>
+      </article>
+
+      <!-- Pro -->
+      <article class="plan plan-featured" aria-label="Pro plan">
+        <div class="plan-head"><h3 class="plan-name">Pro</h3><span class="plan-badge">Most popular</span></div>
+        <p class="plan-tagline">Ten times the runway, frontier models.</p>
+        <div class="plan-price">
+          <span class="plan-amount" id="pro-price">$20</span><span class="plan-per" id="pro-per">/month</span>
+        </div>
+        <p class="plan-price-note" id="pro-note">Billed monthly. Cancel in one click.</p>
+        <button type="button" class="btn btn-quiet" id="pro-cta">Upgrade to Pro</button>
+        <ul class="plan-features">
+          <li class="plan-feature"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>300 credits daily</strong> — 10× the free grant</span></li>
+          <li class="plan-feature"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Frontier models (2× credit cost, published)</span></li>
+          <li class="plan-feature"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Priority generation queue</span></li>
+          <li class="plan-feature"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Everything in Free, including export</span></li>
+        </ul>
+      </article>
+    </div>
+
+    <div class="center" style="margin-top: 34px;">
+      <p style="color: var(--ink-2); font-size: 15px; max-width: 560px; margin: 0 auto;">Cancel anytime, in one click, from your account. You keep Pro until the end of the period you paid for. Your projects stay; your daily grant returns to 30.</p>
+    </div>
+
+    <!-- Published credit prices -->
+    <div class="cost-table" role="table" aria-label="Published credit prices">
+      <div class="cost-row head" role="row">
+        <div role="columnheader">Action</div>
+        <div role="columnheader">Credits</div>
+        <div role="columnheader">When you'll spend it</div>
+      </div>
+      <div class="cost-row" role="row">
+        <div class="cost-action" role="cell">Small edit<small>Fix a typo, tweak a style, rename a button</small></div>
+        <div role="cell"><span class="cost-num">1 <span class="c">credit</span></span></div>
+        <div class="cost-when" role="cell">Most of your day-to-day tweaks</div>
+      </div>
+      <div class="cost-row" role="row">
+        <div class="cost-action" role="cell">Generate a feature<small>New page, form, API route, component</small></div>
+        <div role="cell"><span class="cost-num">5 <span class="c">credits</span></span></div>
+        <div class="cost-when" role="cell">Adding something genuinely new</div>
+      </div>
+      <div class="cost-row" role="row">
+        <div class="cost-action" role="cell">Auto-fix preview errors<small>Agent reads console errors and proposes a fix</small></div>
+        <div role="cell"><span class="cost-num">2 <span class="c">credits</span></span></div>
+        <div class="cost-when" role="cell">When the preview reports a problem</div>
+      </diff-from-here-placeholder></div>
+      <div class="cost-row" role="row">
+        <div class="cost-action" role="cell">Plan a new app<small>Spec: screens, data model, endpoints — before any code</small></div>
+        <div role="cell"><span class="cost-num">15 <span class="c">credits</span></span></div>
+        <div class="cost-when" role="cell">First prompt of a new project</div>
+      </div>
+      <div class="cost-row" role="row">
+        <div class="cost-action" role="cell">Frontier models<small>Pro only — stronger models for hard work</small></div>
+        <div role="cell"><span class="cost-num">2×</span></div>
+        <div class="cost-when" role="cell">Opt in per prompt; the price shows first</div>
+      </div>
+    </div>
+
+    <div class="center" style="margin-top: 26px;">
+      <p style="color: var(--ink-2); font-size: 15px;">We show the price before you spend. Always.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SIMULATOR ============ -->
+<section class="sim-band" id="simulator" aria-labelledby="sim-h">
+  <div class="wrap">
+    <div class="center">
+      <p class="eyebrow" style="color: #64b5ff;">Interactive</p>
+      <h2 id="sim-h">Feel the credits work.</h2>
+      <p class="sub">This is the real mechanic, simulated. Spend credits, watch the meter and the ledger respond, hit zero, then watch tomorrow's refill arrive. No account, nothing charged — it's a mockup.</p>
+    </div>
+
+    <div class="sim">
+      <div class="sim-panel">
+        <h3 style="font-size: 17px; margin-bottom: 14px;">Spend some credits</h3>
+        <div class="sim-actions" id="sim-actions">
+          <button type="button" class="sim-action" data-cost="1" data-what="Small edit">
+            <span>Small edit <kbd>1</kbd></span><span class="cost">−1</span>
+          </button>
+          <button type="button" class="sim-action" data-cost="5" data-what="Generate a feature">
+            <span>Generate a feature <kbd>5</kbd></span><span class="cost">−5</span>
+          </button>
+          <button type="button" class="sim-action" data-cost="2" data-what="Auto-fix preview errors">
+            <span>Auto-fix preview errors <kbd>2</kbd></span><span class="cost">−2</span>
+          </button>
+          <button type="button" class="sim-action" data-cost="15" data-what="Plan a new app">
+            <span>Plan a new app <kbd>15</kbd></span><span class="cost">−15</span>
+          </button>
+          <button type="button" class="sim-action" data-cost="10" data-what="Generate a feature (frontier model)">
+            <span>Feature × frontier (2×) <kbd>10</kbd></span><span class="cost">−10</span>
+          </button>
+        </div>
+        <div class="sim-status">
+          <div class="sim-row"><span>Today's balance</span><span id="sim-grant">of 30 daily</span></div>
+          <div class="sim-meter" role="img" aria-label="Credit balance meter" id="sim-meter-label-wrap">
+            <div class="sim-meter-fill" id="sim-meter-fill"></div>
+ color" id="sim-meter-fill"></div>
+          </div>
+          <div class="sim-balance"><span id="sim-balance">30</span><small id="sim-unit">credits left today</small></div>
+          <div class="sim-refill"><span class="dot" aria-hidden="true"></span><span>Refills at 00:00 UTC — <span id="sim-countdown">counting…</span></span></div>
+          <p class="sim-note" id="sim-advice">Spend freely. Nothing here is real — it's the mechanic we're showing you.</p>
+        </div>
+      </div>
+
+      <div class="sim-panel">
+        <h3 style="font-size: 17px; margin-bottom: 14px;">Ledger</h3>
+        <div class="sim-log" id="sim-log" aria-live="polite">
+          <div class="sim-log-line"><span class="t">--:--</span><span class="delta">+30</span><span>daily grant · free plan</span></div>
+        </ first grant already there
+        </div>
+        <button type="button" class="btn btn-quiet btn-sm" id="sim-refund" style="margin-top: 14px;">Simulate: prompt failed → refund</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="sim-reset" style="margin-top: 10px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25); color: #fff;">Reset simulation</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ IN-PRODUCT UI ============ -->
+<section aria-labelledby="ui-h">
+  <div class="wrap">
+    <div class="center">
+      <h2 id="ui-h">What you see before you spend.</h2>
+      <p class="sub">The same honesty, inside the product. These are the surfaces every Vibecoder user meets daily.</p>
+    </div>
+
+    <div class="ui-grid">
+      <!-- Cost preview chip -->
+      <article class="ui-card">
+        <div class="ui-card-head">
+          <h3>Spend preview</h3>
+          <p>On every action, before it runs.</p>
+        </div>
+        <div class="ui-card-body">
+          <div class="chip-row">
+            <span class="chip-label">Generate a feature</span>
+            <span class="chip-amount">Costs <b>5</b> · you have <b>23</b></span>
+          </div>
+          <div class="chip-row" style="margin-top: 10px;">
+            <span class="chip-label">Plan a new app</span>
+            <span class="chip-amount">Costs <b>15</b> · you have <b>23</b></span>
+          </div>
+          <p class="meter-caption" style="margin-top: 14px;">The price is on the button's surface, not behind it. If an action costs more than you have, it explains instead of failing.</p>
+        </div>
+      </article>
+
+      <!-- 80% warning -->
+      <article class="ui-card">
+        <div class="ui-card-head">
+          <h3>Soft warning at 80%</h3>
+          <p>A heads-up, never a wall.</p>
+        </div>
+        <div class="ui-card-body">
+          <div class="meter-wrap">
+            <div class="meter-top"><span>Today's credits</span><span>24 / 30</span></div>
+            <div class="meter" role="img" aria-label="Credit meter at 80 percent"><div class="meter-fill warn" style="width: 80%;"></div></div>
+            <p class="meter-caption">You've used 24 of today's 30 credits. Just so you know — nothing changes, the meter just tells the truth.</p>
+          </div>
+        </div>
+      </article>
+
+      <!-- Out of credits -->
+      <article class="ui-card">
+        <div class="ui-card-head">
+          <h3>Out of credits</h3>
+          <p>Where anxiety goes to die.</p>
+        </div>
+        <div class="ui-card-body">
+          <div class="out-state">
+            <h4>You've used today's 30 credits</h4>
+            <p>They refill at 00:00 UTC. Your project is exactly as you left it — nothing is lost, nothing is charged. We don't even have your card.</p>
+            <div class="row">
+              <button type="button" class="btn btn-primary btn-sm" id="upsell-open">Upgrade to Pro</button>
+              <button type="button" class="ghost-link">I'll come back tomorrow</button>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section id="faq" aria-labelledby="faq-h" style="padding-top: 40px;">
+  <div class="wrap">
+    <div class="center">
+      <h2 id="faq-h">Questions, answered plainly.</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>What are credits?</summary>
+        <div class="a">The unit every action costs: a small edit is 1, generating a feature is 5. Your balance refills daily at 00:00 UTC and doesn't roll over — we'd rather you build daily than hoard.</div>
+      </details>
+      <details>
+        <summary>What happens when I run out mid-project?</summary>
+        <div class="a">Nothing dramatic. We stop, tell you how much the next step costs, and wait. Tomorrow your credits are back, exactly where you left off. No lost work, no surprise charges — we don't even have your card.</div>
+      </details>
+      <details>
+        <summary>Why don't credits roll over?</summary>
+        <div class="a">Because the promise is simpler this way: every day starts whole. No banking, no expiration math, no "use it or lose it" anxiety about a pile you're afraid to spend.</div>
+      </details>
+      <details>
+        <summary>How do I cancel Pro?</summary>
+        <div class="a">Account → Billing → Cancel. One click, no chat with support, no retention offers. You keep Pro until the end of what you paid for.</div>
+      </details>
+      <details>
+        <summary>Do you show ads?</summary>
+        <div class="a">Never, in any plan. Pro subscriptions fund the free tier. That's the whole business model — and it's the reason we don't need your attention or your data.</div>
+      </details>
+      <details>
+        <summary>Do you work in my country?</summary>
+        <div class="a">Yes — everywhere, no VPN needed. Credits reset at 00:00 UTC for everyone on Earth, and the same models are available in every country.</div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINAL CTA ============ -->
+<section class="cta-band">
+  <div class="wrap">
+    <h2>Your next app is a sentence away.</h2>
+    <div class="cta-row" style="display: flex; gap: 14px; justify-content: center; margin-top: 26px; flex-wrap: wrap;">
+      <a href="#" class="btn btn-primary">Start building free</a>
+      <a href="#pricing" class="btn btn-ghost">Compare plans again</a>
+      <p class="hero-note" style="width: 100%;">30 credits a day. No card. No ads. The code is yours.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer>
+  <div class="foot">
+    <div>
+      <div class="foot-brand">Vibecoder</div>
+      <p class="foot-note">Free as in yours. We don't sell your data or show ads. Your code trains nothing.</p>
+    </div>
+    <div class="foot-links">
+      <a href="#">Pricing</a>
+      <a href="#">Changelog</a>
+      <a href="#">Status</a>
+      <a href="#">Privacy in plain language</a>
+      <a href="#">Terms</a>
+      <a href="#">Accessibility statement</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ============ UPSELL MODAL ============ -->
+<div class="scrim" id="scrim" role="dialog" aria-modal="true" aria-labelledby="modal-h" hidden>
+  <div class="modal">
+    <button type="button" class="modal-x" id="modal-x" aria-label="Close dialog">✕</button>
+    <h3 id="modal-h">Go Pro for 300 credits a day.</h3>
+    <p class="sub">Ten times the daily grant, frontier models, priority queue — and the same no-ads, keep-your-code promise as Free.</p>
+    <ul class="upsell-points">
+      <li><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><strong>300 credits daily</strong> — build all day, refill at midnight UTC</span></li>
+      <li><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Frontier models for hard problems (2× credit cost, always published)</span></li>
+      <li><svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8.5l3.5 3.5 7.5-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Priority queue so generation never waits behind the crowd</span></li>
+    </ul>
+    <div class="stack">
+      <button type="button" class="btn btn-primary" id="modal-upgrade">Upgrade to Pro — $20/month</button>
+      <button type="button" class="ghost-link" id="modal-later" style="text-align: center;">No thanks — I'll refill tomorrow</button>
+      <p style="font-size: 12.5px; color: var(--ink-3); text-align: center;">Cancel anytime in one click. You keep Pro until the end of the period you paid for.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- Billing toggle ---------- */
+  var sw = document.getElementById("billing-switch");
+  var pm = document.getElementById("label-monthly");
+  var py = document.getElementById("label-yearly");
+  var priceEl = document.getElementById("pro-price");
+  var perEl = document.getElementById("pro-per");
+  var noteEl = document.getElementById("pro-note");
+  var modalPrice = document.getElementById("modal-upgrade");
+
+  function setBilling(yearly) {
+    sw.setAttribute("aria-checked", yearly ? "true" : "false");
+    pm.classList.toggle("on", !yearly);
+    py.classList.toggle("on", yearly);
+    pm.setAttribute("aria-pressed", yearly ? "false" : "true");
+    py.setAttribute("aria-pressed", yearly ? "true" : "false");
+    priceEl.textContent = yearly ? "$16" : "$20";
+    perEl.textContent = yearly ? "/month" : "/month";
+    noteEl.textContent = yearly ? "Billed $192 once a year. Cancel in one click." : "Billed monthly. Cancel in one click.";
+    modalPrice.textContent = yearly ? "Upgrade to Pro — $16/month, billed yearly" : "Upgrade to Pro — $20/month";
+  }
+  sw.addEventListener("click", function () { setBilling(sw.getAttribute("aria-checked") !== "true"); });
+  pm.addEventListener("click", function () { setBilling(false); });
+  py.addEventListener("click", function () { setBilling(true); });
+
+  /* ---------- Simulator ---------- */
+  var GRANT = 30;
+  var balance = GRANT;
+  var logEl = document.getElementById("sim-log");
+  var fill = document.getElementById("sim-meter-fill");
+  var balEl = document.getElementById("sim-balance");
+  var grantEl = document.getElementById("sim-grant");
+  var adviceEl = document.getElementById("sim-advice");
+  var actionBtns = Array.prototype.slice.call(document.querySelectorAll(".sim-action"));
+
+  function time() {
+    var d = new Date();
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(d.getHours()) + ":" + p(d.getMinutes());
+  }
+  function log(kind, delta, text) {
+    var line = document.createElement("div");
+    line.className = "sim-log-line" + (kind ? " " + kind : "");
+    line.innerHTML = '<span class="t">' + time() + '</span><span class="delta">' + delta + '</span><span>' + text + '</span>';
+    logEl.insertBefore(line, logEl.firstChild.nextSibling ? logEl.firstChild.nextSibling : logEl.firstChild);
+    while (logEl.children.length > 14) logEl.removeChild(logEl.lastChild);
+  }
+  function render() {
+    balEl.textContent = balance;
+    var pct = (balance / GRANT) * 100;
+    fill.style.width = pct + "%";
+    fill.className = "sim-meter-fill" + (balance === 0 ? " out" : balance <= GRANT * 0.2 ? " warn" : "");
+    var msgs = {
+      ok: "Spend freely. Nothing here is real — it's the mechanic we're showing you.",
+      warn: "That's under 20% left. A soft heads-up appears here — never a wall.",
+      out: "Out of credits. Buttons gray out, a kind message explains, and tomorrow at 00:00 UTC everything resets."
+    };
+    adviceEl.textContent = balance === 0 ? msgs.out : balance <= GRANT * 0.2 ? msgs.warn : msgs.ok;
+    actionBtns.forEach(function (b) { b.disabled = balance < parseInt(b.getAttribute("data-cost"), 10); });
+  }
+  actionBtns.forEach(function (b) {
+    b.addEventListener("click", function () {
+      var cost = parseInt(b.getAttribute("data-cost"), 10);
+      if (balance < cost) return;
+      balance -= cost;
+      log("", "−" + cost, b.getAttribute("data-what"));
+      render();
+    });
+  });
+  document.getElementById("sim-refund").addEventListener("click", function () {
+    var refund = Math.min(5, GRANT - balance);
+    if (refund === 0) { adviceEl.textContent = "Already at the full daily grant — nothing to refund."; return; }
+    balance += refund;
+    log("refund", "+" + refund, "prompt failed → refunded");
+    render();
+  });
+  document.getElementById("sim-reset").addEventListener("click", function () {
+    balance = GRANT;
+    logEl.innerHTML = '<div class="sim-log-line"><span class="t">' + time() + '</span><span class="delta">+30</span><span>daily grant · free plan</span></div>';
+    render();
+  });
+
+  /* ---------- UTC countdown ---------- */
+  var cdEl = document.getElementById("sim-countdown");
+  function tick() {
+    var now = new Date();
+    var next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+    var s = Math.floor((next - now) / 1000);
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    cdEl.textContent = h + "h " + p(m) + "m " + p(sec) + "s";
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  /* ---------- Modal ---------- */
+  var scrim = document.getElementById("scrim");
+  var lastFocus = null;
+  function openModal() {
+    lastFocus = document.activeElement;
+    scrim.hidden = false;
+    scrim.classList.add("open");
+    document.getElementById("modal-x").focus();
+  }
+  function closeModal() {
+    scrim.classList.remove("open");
+    scrim.hidden = true;
+    if (lastFocus) lastFocus.focus();
+  }
+  document.getElementById("upsell-open").addEventListener("click", openModal);
+  document.getElementById("pro-cta").addEventListener("click", openModal);
+  document.getElementById("modal-x").addEventListener("click", closeModal);
+  document.getElementById("modal-later").addEventListener("click", closeModal);
+  document.getElementById("modal-upgrade").addEventListener("click", function () {
+    adviceEl.textContent = "In the real product this opens Stripe checkout. In this mockup, we just say: thanks for the click.";
+    closeModal();
+    document.getElementById("simulator").scrollIntoView({ behavior: "smooth" });
+  });
+  scrim.addEventListener("click", function (e) { if (e.target === scrim) closeModal(); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && scrim.classList.contains("open")) closeModal();
+    if (e.key === "Tab" && scrim.classList.contains("open")) {
+      var focusables = scrim.querySelectorAll("button, a[href]");
+      var first = focusables[0], last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+
+  /* ---------- Nav ---------- */
+  var nav = document.getElementById("nav");
+  var navToggle = document.getElementById("nav-toggle");
+  navToggle.addEventListener("click", function () {
+    var open = nav.classList.toggle("open");
+    navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    navToggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+  });
+
+  /* ---------- Init ---------- */
+  render();
+})();
+</script>
+</body>
+</html>
