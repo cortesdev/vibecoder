@@ -1,4 +1,3 @@
-import Link from "next/link";
 import Wordmark from "./wordmark";
 
 export default function SiteNav() {

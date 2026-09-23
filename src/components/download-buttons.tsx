@@ -58,7 +58,7 @@ export default function DownloadButtons({ variant = "hero" }: { variant?: "hero"
       <div className="flex flex-col items-center gap-3">
         <a href={primary.href} className="btn btn-primary btn-lg" data-testid="primary-download">
           Download for {primary.label}
-          {primary.note ? <span className="muted-3 text-sm font-normal">({primary.note})</span> : null}
+          {primary.note ? <span className="muted-3 text-sm text-black font-normal">({primary.note})</span> : null}
         </a>
         <p className="muted-3 text-[13px]">
           Free &amp; open source · macOS, Windows, Linux ·{" "}
