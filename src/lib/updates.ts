@@ -19,8 +19,15 @@ export function assetForPlatform(platform: string): string | null {
 
 /** semver-ish compare: 1.2.10 > 1.2.9 > 1.2.9-beta.1 > 1.2.8 */
 export function compareVersions(a: string, b: string): number {
-  const core = (v: string) => v.replace(/-.*$/, "").split(".").map(Number);
-  const pre = (v: string) => (v.includes("-") ? v.split("-")[1] : "");
+  // Tolerate the git tag style (v1.2.9) and anything unparsable: a NaN here
+  // would make every comparison false, i.e. silently "no update".
+  const core = (v: string) =>
+    v
+      .replace(/^v/, "")
+      .replace(/-.*$/, "")
+      .split(".")
+      .map((part) => Number(part) || 0);
+  const pre = (v: string) => (v.replace(/^v/, "").includes("-") ? v.split("-")[1] : "");
   const [a1, a2, a3] = core(a);
   const [b1, b2, b3] = core(b);
   if (a1 !== b1) return a1 - b1;

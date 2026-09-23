@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { getModel, DEFAULT_MODEL_ID, FREE_FALLBACK_ID, type ModelDef } from "./models";
+import { getModel, freeModels, DEFAULT_MODEL_ID, FREE_FALLBACK_ID, type ModelDef } from "./models";
 import { debitForRun, refundRun } from "./credits";
 import { FREE_TOKENS_PER_CREDIT, ensureFreeWallet, spendFreeTokens } from "./freewallet";
 import { LlmAgent, type LlmConfig } from "./agent/llm";
@@ -11,9 +11,29 @@ import type { Agent } from "./agent/types";
 const PROVIDER_BASE_URL: Record<string, string> = {
   opencode: "https://opencode.ai/zen/v1",
   zai: "https://api.z.ai/api/paas/v4",
+  google: "https://generativelanguage.googleapis.com/v1beta/openai",
   anthropic: "https://api.anthropic.com/v1",
   openai: "https://api.openai.com/v1",
 };
+
+// Env vars that can serve a provider, most specific first. The VIBECODER_ name
+// is ours; the bare vendor name is accepted so a plain ZAI_API_KEY or
+// GEMINI_API_KEY in Vercel just works. Blank values count as unset — Vercel
+// hands empty strings to the build when a var exists but has no value.
+const PLATFORM_KEY_ENV: Record<string, string[]> = {
+  anthropic: ["VIBECODER_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"],
+  openai: ["VIBECODER_OPENAI_API_KEY", "OPENAI_API_KEY"],
+  opencode: ["VIBECODER_OPENCODE_API_KEY", "OPENCODE_API_KEY"],
+  zai: ["VIBECODER_ZAI_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"],
+  google: ["VIBECODER_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"],
+};
+
+/** VIBECODER_MODEL_<MODEL_ID> overrides a model's provider string, so a
+ *  renamed or rotated upstream id is an env change, not a deploy. */
+function modelStringFor(m: ModelDef): string {
+  const name = `VIBECODER_MODEL_${m.id.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}`;
+  return process.env[name]?.trim() || m.model;
+}
 
 export interface RunOutcome {
   ok: boolean;
@@ -39,22 +59,13 @@ async function keyFor(userId: string, provider: string): Promise<string | null> 
 }
 
 function platformConfig(m: ModelDef): LlmConfig | null {
-  // Platform-hosted (credits) models use VIBECODER_<PROVIDER>_API_KEY env;
-  // the opencode provider (Big Pickle / Grok Code) uses OPENCODE_API_KEY.
-  const envKey =
-    m.provider === "anthropic"
-      ? process.env.VIBECODER_ANTHROPIC_API_KEY
-      : m.provider === "openai"
-        ? process.env.VIBECODER_OPENAI_API_KEY
-        : m.provider === "opencode"
-          ? process.env.OPENCODE_API_KEY ?? process.env.VIBECODER_OPENCODE_API_KEY
-          : undefined;
-  if (!envKey) return null;
-  return {
-    apiKey: envKey,
-    baseUrl: PROVIDER_BASE_URL[m.provider],
-    model: m.model,
-  };
+  const baseUrl = PROVIDER_BASE_URL[m.provider];
+  if (!baseUrl) return null;
+  const apiKey = (PLATFORM_KEY_ENV[m.provider] ?? [])
+    .map((name) => process.env[name]?.trim())
+    .find(Boolean);
+  if (!apiKey) return null;
+  return { apiKey, baseUrl, model: modelStringFor(m) };
 }
 
 async function resolveAgent(
@@ -69,7 +80,7 @@ async function resolveAgent(
         agent: new LlmAgent({
           apiKey: key,
           baseUrl: PROVIDER_BASE_URL[model.provider],
-          model: model.model,
+          model: modelStringFor(model),
         }),
       };
     }
@@ -81,15 +92,42 @@ async function resolveAgent(
   if (cfg) return { agent: new LlmAgent(cfg) };
 
   if (model.byok || model.tier === "free") {
+    const envNames = (PLATFORM_KEY_ENV[model.provider] ?? []).join(" or ");
     return {
       agent: null,
-      problem: `${model.label} needs a free ${model.provider} API key — add it in Settings (it takes a minute).`,
+      problem: `${model.label} has no key yet — add your own ${model.provider} key in Settings, or set ${envNames} on the server.`,
     };
   }
 
   // Credits tier: platform key required; if we don't have one configured,
   // degrade to the mock so the product still works end to end.
   return { agent: new MockAgent() };
+}
+
+/**
+ * Walk the free models starting with the one the user picked and run the first
+ * one that actually has an agent — their own key, else the platform's. A free
+ * model list is a menu, not a single point of failure: the first prompt should
+ * answer whichever free provider is configured instead of dead-ending.
+ */
+async function resolveFreeAgent(
+  userId: string,
+  requested: ModelDef,
+): Promise<{ agent: Agent | null; model: ModelDef; problem?: string }> {
+  const chain = [requested, ...freeModels().filter((m) => m.id !== requested.id)];
+  const withoutKeys: string[] = [];
+  for (const candidate of chain) {
+    const { agent } = await resolveAgent(userId, candidate);
+    if (agent) return { agent, model: candidate };
+    withoutKeys.push(candidate.label);
+  }
+  return {
+    agent: null,
+    model: requested,
+    problem: `No free model has a key right now (${withoutKeys.join(
+      ", ",
+    )}). Add a free Z.ai or Gemini key in Settings — or set ZAI_API_KEY / GEMINI_API_KEY on the server — and the free models work immediately.`,
+  };
 }
 
 /**
@@ -112,15 +150,23 @@ export async function runModelPrompt(input: {
 
   // --- Free / BYO path -----------------------------------------------------
   if (model.tier === "free") {
-    const { agent, problem } = await resolveAgent(input.userId, model);
+    const { agent, model: ran, problem } = await resolveFreeAgent(input.userId, model);
     if (!agent) return { ok: false, error: problem };
     try {
       const { edits, usage } = await input.run(agent);
-      return { ok: true, edits, usage, modelId: model.id, modelLabel: model.label };
+      const swapped = ran.id === model.id ? "" : `${model.label} has no key on this account yet, so this ran on ${ran.label} instead (also free).`;
+      return {
+        ok: true,
+        edits,
+        usage,
+        modelId: ran.id,
+        modelLabel: ran.label,
+        notice: swapped || undefined,
+      };
     } catch (err) {
       return {
         ok: false,
-        error: err instanceof Error ? err.message : `${model.label} failed`,
+        error: err instanceof Error ? err.message : `${ran.label} failed`,
       };
     }
   }
@@ -203,13 +249,12 @@ export async function runModelPrompt(input: {
   });
 
   if (!debited) {
-    const fb = getModel(FREE_FALLBACK_ID)!;
-    const { agent } = await resolveAgent(input.userId, fb);
+    const fallback = getModel(FREE_FALLBACK_ID)!;
+    const { agent, model: fb, problem } = await resolveFreeAgent(input.userId, fallback);
     if (!agent) {
       return {
         ok: false,
-        error:
-          "Out of credits — buy more in Settings. (Free fallback also needs an opencode key configured; add one and you're unblockable.)",
+        error: `Out of credits — buy more in Settings. ${problem ?? ""}`.trim(),
       };
     }
     try {

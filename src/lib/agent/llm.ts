@@ -26,6 +26,45 @@ export function llmConfigFromEnv(env: Record<string, string | undefined> = proce
   };
 }
 
+// A bare "responded 403" hides the only useful part of the answer. Providers
+// explain themselves in the body, and the same status means very different
+// things (bad key vs no funds vs "not allowed outside our app"), so surface it.
+const STATUS_HINT: Record<number, string> = {
+  401: "the provider rejected this API key",
+  402: "the provider account is out of funds",
+  403: "the provider refused this request — often a key or model that is not allowed outside the vendor's own app",
+  404: "the provider does not know this model — check the model id",
+  429: "rate limited by the provider — try again in a moment",
+};
+
+function providerErrorText(body: string): string {
+  const trimmed = body.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: { message?: string } | string; message?: string };
+    const nested = parsed.error;
+    const message = typeof nested === "string" ? nested : nested?.message ?? parsed.message;
+    if (message) return message;
+  } catch {
+    // An HTML or plain-text error page from a proxy — fall through to a snippet.
+  }
+  return trimmed.replace(/\s+/g, " ").slice(0, 200);
+}
+
+async function httpError(res: Response): Promise<Error> {
+  let body = "";
+  try {
+    body = await res.text();
+  } catch {
+    body = "";
+  }
+  const detail = providerErrorText(body);
+  const hint = STATUS_HINT[res.status];
+  return new Error(
+    `agent API responded ${res.status}${detail ? `: ${detail}` : ""}${hint ? ` (${hint})` : ""}`,
+  );
+}
+
 function parseEditsReply(reply: string): FileEdit[] {
   const text = reply
     .replace(/^```(?:json)?\s*/i, "")
@@ -76,7 +115,7 @@ export class LlmAgent implements Agent {
         ],
       }),
     });
-    if (!res.ok) throw new Error(`agent API responded ${res.status}`);
+    if (!res.ok) throw await httpError(res);
 
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[];

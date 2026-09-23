@@ -138,22 +138,23 @@ async function walk(dir, base = dir, found = []) {
 }
 
 /**
- * Union the per-runner fragments into the Tauri static manifest.
- * `sigContent` is injected by the caller (fs) so this stays pure.
+ * Union the per-runner entries (one per platform, read back from the
+ * platform-<key>.json files) into the Tauri static manifest. `sigContent` is injected
+ * by the caller (fs) so this stays pure, and a platform without a signature is
+ * left out instead of being advertised as installable.
  */
-export function mergeFragments(fragments, { version, notes, pubDate, baseUrl, sigContent }) {
+export function mergeFragments(entries, { version, notes = "", pubDate = new Date().toISOString(), baseUrl, sigContent }) {
   const platforms = {};
-  for (const fragment of fragments) {
-    for (const [platform, asset] of Object.entries(fragment.platforms ?? {})) {
-      const signature = sigContent[`${asset}.sig`] ?? sigContent[asset];
-      if (!signature) continue;
-      platforms[platform] = { signature: signature.trim(), url: `${baseUrl}/${asset}` };
-    }
+  for (const entry of entries) {
+    if (!entry?.platform || !UPDATER_ASSETS[entry.platform]) continue;
+    const signature = sigContent[`${entry.asset}.sig`];
+    if (!signature) continue;
+    platforms[entry.platform] = { signature: signature.trim(), url: `${baseUrl}/${entry.asset}` };
   }
   return {
     version,
     notes: notes ?? "",
-    pub_date: pubDate ?? new Date().toISOString(),
+    pub_date: pubDate,
     platforms,
   };
 }
@@ -176,6 +177,7 @@ async function runCollect(args) {
   const platforms = {};
   const installers = [];
   const seen = new Set();
+  const collisions = [];
   let skippedV2 = 0;
 
   for (const file of files) {
@@ -186,6 +188,10 @@ async function runCollect(args) {
       continue;
     }
     if (seen.has(match.name)) continue;
+    if (match.updater && platforms[match.platform]) {
+      collisions.push(`${match.platform} (${file.rel})`);
+      continue;
+    }
 
     const sigSource = `${file.full}.sig`;
     let hasSig = true;
@@ -215,37 +221,49 @@ async function runCollect(args) {
     throw new Error(`No updater bundles found under ${searchRoots.join(", ")} — did the tauri build produce artifacts?`);
   }
 
-  await writeFile(
-    path.join(outDir, "fragment.json"),
-    `${JSON.stringify({ version: args.version ?? "", platforms, installers }, null, 2)}\n`,
-  );
-  console.log(`collected ${Object.keys(platforms).length} updater bundle(s):`);
+  // One file per platform: the publish job flattens every runner's artifacts
+  // into a single directory, so anything named fragment.json would overwrite
+  // the other runners' findings.
+  for (const [platform, asset] of Object.entries(platforms)) {
+    await writeFile(
+      path.join(outDir, `platform-${platform}.json`),
+      `${JSON.stringify({ platform, asset }, null, 2)}\n`,
+    );
+  }
+
+  console.log(`collected ${Object.keys(platforms).length} updater bundle(s) for ${args.version ?? "?"}:`);
   for (const [platform, name] of Object.entries(platforms)) console.log(`  ${platform} → ${name}`);
   for (const name of installers) console.log(`  installer → ${name}`);
+  for (const clash of collisions) {
+    console.log(`::warning title=Duplicate bundle::two bundles claimed ${clash} — build one target at a time.`);
+  }
 }
 
 async function runMerge(args) {
   const fragmentsDir = String(args.fragments ?? "release-assets");
   const outDir = String(args.out ?? fragmentsDir);
-  const baseUrl = String(args.baseUrl ?? "").replace(/\/$/, "");
+  // --base-url / --notes-file arrive with dashes, args keys keep them.
+  const baseUrl = String(args["base-url"] ?? "").replace(/\/$/, "");
   if (!baseUrl) throw new Error("--base-url is required (the release download URL)");
 
-  const entries = await readdir(fragmentsDir).catch(() => []);
-  const fragments = [];
+  const files = await readdir(fragmentsDir).catch(() => []);
+  const entries = [];
   const sigContent = {};
-  for (const entry of entries) {
-    if (entry.endsWith(".sig")) {
-      sigContent[entry] = await readFile(path.join(fragmentsDir, entry), "utf8");
+  for (const file of files) {
+    if (file.endsWith(".sig")) {
+      sigContent[file] = await readFile(path.join(fragmentsDir, file), "utf8");
       continue;
     }
-    if (entry === "fragment.json") {
-      fragments.push(JSON.parse(await readFile(path.join(fragmentsDir, entry), "utf8")));
+    if (/^platform-.*\.json$/.test(file)) {
+      entries.push(JSON.parse(await readFile(path.join(fragmentsDir, file), "utf8")));
     }
   }
-  if (fragments.length === 0) throw new Error(`No fragment.json found in ${fragmentsDir}`);
+  if (entries.length === 0) {
+    throw new Error(`No platform-*.json found in ${fragmentsDir} — did the build jobs upload their artifacts?`);
+  }
 
   const notes = args["notes-file"] ? await readFile(String(args["notes-file"]), "utf8") : "";
-  const manifest = mergeFragments(fragments, {
+  const manifest = mergeFragments(entries, {
     version: String(args.version ?? ""),
     notes,
     pubDate: args["pub-date"] ? String(args["pub-date"]) : undefined,

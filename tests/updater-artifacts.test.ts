@@ -36,12 +36,12 @@ describe("classify", () => {
       updater: true,
     });
     expect(
-      classify("target/x86_64-apple-darwin/release/bundle/macos/Vibecoder.app.tar.gz", "Vibecoder.app.tar.gz").name,
+      classify("target/x86_64-apple-darwin/release/bundle/macos/Vibecoder.app.tar.gz", "Vibecoder.app.tar.gz")?.name,
     ).toBe("Vibecoder_x64.app.tar.gz");
   });
 
   it("prefers an arch token in the filename when the path has no triple", () => {
-    expect(classify("bundle/macos/Vibecoder_1.0.0_aarch64.app.tar.gz", "Vibecoder_1.0.0_aarch64.app.tar.gz").platform).toBe(
+    expect(classify("bundle/macos/Vibecoder_1.0.0_aarch64.app.tar.gz", "Vibecoder_1.0.0_aarch64.app.tar.gz")?.platform).toBe(
       "darwin-aarch64",
     );
   });
@@ -58,13 +58,13 @@ describe("classify", () => {
   });
 
   it("maps the versionless human installers the download buttons link to", () => {
-    expect(classify("bundle/dmg/Vibecoder_1.0.0_aarch64.dmg", "Vibecoder_1.0.0_aarch64.dmg").name).toBe(INSTALLER_ASSETS["darwin-aarch64"]);
-    expect(classify("bundle/dmg/Vibecoder_1.0.0_x64.dmg", "Vibecoder_1.0.0_x64.dmg").name).toBe(INSTALLER_ASSETS["darwin-x86_64"]);
-    expect(classify("bundle/nsis/Vibecoder_1.0.0_x64-setup.exe", "Vibecoder_1.0.0_x64-setup.exe").name).toBe(
+    expect(classify("bundle/dmg/Vibecoder_1.0.0_aarch64.dmg", "Vibecoder_1.0.0_aarch64.dmg")?.name).toBe(INSTALLER_ASSETS["darwin-aarch64"]);
+    expect(classify("bundle/dmg/Vibecoder_1.0.0_x64.dmg", "Vibecoder_1.0.0_x64.dmg")?.name).toBe(INSTALLER_ASSETS["darwin-x86_64"]);
+    expect(classify("bundle/nsis/Vibecoder_1.0.0_x64-setup.exe", "Vibecoder_1.0.0_x64-setup.exe")?.name).toBe(
       INSTALLER_ASSETS["windows-x86_64"],
     );
-    expect(classify("bundle/deb/Vibecoder_1.0.0_amd64.deb", "Vibecoder_1.0.0_amd64.deb").name).toBe(INSTALLER_ASSETS["linux-x86_64-deb"]);
-    expect(classify("bundle/rpm/Vibecoder-1.0.0-1.x86_64.rpm", "Vibecoder-1.0.0-1.x86_64.rpm").name).toBe(
+    expect(classify("bundle/deb/Vibecoder_1.0.0_amd64.deb", "Vibecoder_1.0.0_amd64.deb")?.name).toBe(INSTALLER_ASSETS["linux-x86_64-deb"]);
+    expect(classify("bundle/rpm/Vibecoder-1.0.0-1.x86_64.rpm", "Vibecoder-1.0.0-1.x86_64.rpm")?.name).toBe(
       INSTALLER_ASSETS["linux-x86_64-rpm"],
     );
   });
@@ -77,10 +77,13 @@ describe("classify", () => {
 });
 
 describe("mergeFragments", () => {
+  // What each runner's collect step writes out, flattened together by the
+  // publish job's download-artifact.
   const fragments = [
-    { platforms: { "darwin-aarch64": "Vibecoder_aarch64.app.tar.gz", "darwin-x86_64": "Vibecoder_x64.app.tar.gz" } },
-    { platforms: { "windows-x86_64": "Vibecoder_x64-setup.zip" } },
-    { platforms: { "linux-x86_64": "Vibecoder_amd64.AppImage.tar.gz" } },
+    { platform: "darwin-aarch64", asset: "Vibecoder_aarch64.app.tar.gz" },
+    { platform: "darwin-x86_64", asset: "Vibecoder_x64.app.tar.gz" },
+    { platform: "windows-x86_64", asset: "Vibecoder_x64-setup.zip" },
+    { platform: "linux-x86_64", asset: "Vibecoder_amd64.AppImage.tar.gz" },
   ];
   const sigContent = {
     "Vibecoder_aarch64.app.tar.gz.sig": "sig-aarch64\n",
@@ -90,18 +93,22 @@ describe("mergeFragments", () => {
   };
   const base = "https://github.com/cortesdev/vibecoder/releases/download/v1.1.0";
 
+  const platformsOf = (manifest: { platforms: unknown }) =>
+    manifest.platforms as Record<string, { signature: string; url: string }>;
+
   it("builds a complete Tauri manifest with signature contents and download urls", () => {
     const manifest = mergeFragments(fragments, { version: "1.1.0", notes: "Fixes", pubDate: "2026-09-23T00:00:00Z", baseUrl: base, sigContent });
+    const platforms = platformsOf(manifest);
 
     expect(manifest.version).toBe("1.1.0");
     expect(manifest.notes).toBe("Fixes");
     expect(manifest.pub_date).toBe("2026-09-23T00:00:00Z");
-    expect(Object.keys(manifest.platforms)).toHaveLength(4);
-    expect(manifest.platforms["darwin-aarch64"]).toEqual({
+    expect(Object.keys(platforms)).toHaveLength(4);
+    expect(platforms["darwin-aarch64"]).toEqual({
       signature: "sig-aarch64", // the .sig file's content, trimmed — not a path
       url: `${base}/Vibecoder_aarch64.app.tar.gz`,
     });
-    expect(manifest.platforms["windows-x86_64"].url).toBe(`${base}/Vibecoder_x64-setup.zip`);
+    expect(platforms["windows-x86_64"].url).toBe(`${base}/Vibecoder_x64-setup.zip`);
   });
 
   it("drops platforms whose signature is missing rather than advertise an unverifiable update", () => {
@@ -111,6 +118,16 @@ describe("mergeFragments", () => {
       sigContent: { "Vibecoder_aarch64.app.tar.gz.sig": "sig\n" },
     });
 
-    expect(Object.keys(manifest.platforms)).toEqual(["darwin-aarch64"]);
+    expect(Object.keys(platformsOf(manifest))).toEqual(["darwin-aarch64"]);
+  });
+
+  it("ignores a platform key it does not publish", () => {
+    const manifest = mergeFragments(
+      [{ platform: "plan9-mips", asset: "Vibecoder_aarch64.app.tar.gz" }, ...fragments],
+      { version: "1.1.0", baseUrl: base, sigContent },
+    );
+
+    expect(Object.keys(platformsOf(manifest))).toHaveLength(4);
+    expect(platformsOf(manifest)["plan9-mips"]).toBeUndefined();
   });
 });

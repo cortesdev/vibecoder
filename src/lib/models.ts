@@ -4,7 +4,7 @@
 // free to run — the user pays the provider directly.
 
 export type Tier = "free" | "credits";
-export type ProviderId = "vibecoder" | "opencode" | "zai" | "anthropic" | "openai";
+export type ProviderId = "vibecoder" | "opencode" | "zai" | "google" | "anthropic" | "openai";
 
 export interface ModelDef {
   id: string; // stable id used in the API
@@ -22,39 +22,36 @@ export interface ModelDef {
   note: string;
 }
 
+// Nothing from OpenCode Zen's free tier belongs here. Its models are gated at
+// the provider: called from anywhere but the OpenCode app itself they answer
+//   403 FreeTierError: "OpenCode's free tier can only be used from within OpenCode"
+// (verified against a valid Zen key — the *paid* Zen models do work from a
+// server, they just need funds, so Zen stays available for the credits tier).
+// Free models must therefore come from providers that allow server use.
 export const MODELS: ModelDef[] = [
-  {
-    id: "big-pickle",
-    label: "Big Pickle",
-    provider: "opencode",
-    tier: "free",
-    cost: 0,
-    model: "big-pickle",
-    byok: true,
-    contextLimit: 200000,
-    note: "Free code model — served by the platform, works right after sign-in.",
-  },
-  {
-    id: "grok-code",
-    label: "Grok Code",
-    provider: "opencode",
-    tier: "free",
-    cost: 0,
-    model: "grok-code",
-    byok: true,
-    contextLimit: 200000,
-    note: "Free Zen model for quick edits — served by the platform.",
-  },
   {
     id: "glm-flash",
     label: "GLM Flash",
     provider: "zai",
     tier: "free",
     cost: 0,
-    model: "glm-4.5-flash",
+    model: "glm-4.7-flash",
     byok: true,
     contextLimit: 200000,
-    note: "Z.ai free flash model — bring a free Z.ai key.",
+    // Z.ai prices whole models at zero; glm-4.5-flash and glm-4.6v-flash are
+    // free too. Override with VIBECODER_MODEL_GLM_FLASH if Z.ai rotates them.
+    note: "Free on Z.ai — works right after sign-in, or bring your own Z.ai key.",
+  },
+  {
+    id: "gemini-flash",
+    label: "Gemini Flash",
+    provider: "google",
+    tier: "free",
+    cost: 0,
+    model: "gemini-3.8-flash",
+    byok: true,
+    contextLimit: 1000000,
+    note: "Google's free tier — bring your own Gemini key, or use the platform's.",
   },
   {
     id: "sonnet",
@@ -95,16 +92,28 @@ export function getModel(id: string): ModelDef | null {
   return MODELS.find((m) => m.id === id) ?? null;
 }
 
-export const DEFAULT_MODEL_ID = "big-pickle";
+export const DEFAULT_MODEL_ID = "glm-flash";
+
+/**
+ * Free models in preference order, default first. The engine walks this so the
+ * very first prompt runs on whichever free provider is actually reachable
+ * (user's own key, else the platform's) instead of dead-ending on one of them.
+ */
+export function freeModels(): ModelDef[] {
+  const free = MODELS.filter((m) => m.tier === "free");
+  const preferred = free.find((m) => m.id === DEFAULT_MODEL_ID);
+  return preferred ? [preferred, ...free.filter((m) => m !== preferred)] : free;
+}
 
 /** Provider metadata for the picker UI (icon letter handles the logo for now). */
 export const PROVIDER_META: Record<ProviderId, { label: string; blurb: string }> = {
   vibecoder: { label: "Vibecoder Hosted", blurb: "Pay with credits" },
-  opencode: { label: "OpenCode Zen", blurb: "Free models with a Zen key" },
-  zai: { label: "Z.ai", blurb: "Free GLM Flash key" },
+  opencode: { label: "OpenCode Zen", blurb: "Paid Zen models (its free tier is app-only)" },
+  zai: { label: "Z.ai", blurb: "Free GLM Flash" },
+  google: { label: "Google", blurb: "Free Gemini tier" },
   anthropic: { label: "Anthropic", blurb: "Hosted — billed in credits" },
   openai: { label: "OpenAI", blurb: "Hosted — billed in credits" },
 };
 
 /** Fallback chain when a paid run can't be billed: → free default. */
-export const FREE_FALLBACK_ID = "big-pickle";
+export const FREE_FALLBACK_ID = "glm-flash";

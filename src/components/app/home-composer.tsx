@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowUp, Wallet } from "lucide-react";
 import ModelPicker from "./model-picker";
-import { MODELS } from "@/lib/models";
+import { MODELS, DEFAULT_MODEL_ID } from "@/lib/models";
 
 // Freebuff-style home composer: type an idea, then a short 3-question
 // narrowing interview (with option chips you can answer in one tap) before the
@@ -102,7 +102,7 @@ function nameFromPrompt(prompt: string): string {
 export default function HomeComposer({ balance, freeTokens: initialFreeTokens }: { balance: number; freeTokens: number }) {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
-  const [modelId, setModelId] = useState("big-pickle");
+  const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [mode, setMode] = useState<(typeof MODE_CHIPS)[number]>("Build");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");

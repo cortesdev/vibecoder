@@ -114,12 +114,20 @@ export async function createProject(userId: string, name: string) {
   });
 }
 
+export interface PromptAttachment {
+  name: string;
+  type: string;
+  size: number;
+  dataUrl?: string;
+}
+
 export async function runPrompt(
   userId: string,
   projectId: string,
   content: string,
   modelId?: string,
   useFreeTokens = true,
+  attachments: PromptAttachment[] = [],
 ) {
   const project = await findOwnedProject(userId, projectId);
   if (!project) return { ok: false as const, error: "not_found" };
@@ -128,6 +136,19 @@ export async function runPrompt(
   if (!trimmed) return { ok: false as const, error: "Prompt is empty." };
 
   const files = Object.fromEntries(project.files.map((f) => [f.path, f.content]));
+
+  // Attachments ride along as context so the agent knows what it has to work with.
+  const attachmentNote =
+    attachments.length > 0
+      ? `\n\nAttachments:\n${attachments
+          .map((a) => {
+            const kind = a.type.startsWith("image/") ? "image" : a.type.startsWith("video/") ? "video" : "file";
+            const img = a.dataUrl && kind === "image" ? " (image data embedded)" : "";
+            return `- ${a.name} (${kind}, ${a.size} bytes)${img}`;
+          })
+          .join("\n")}`
+      : "";
+  const agentText = `${trimmed}${attachmentNote}`;
 
   const outcome = await runModelPrompt({
     userId,
@@ -139,7 +160,7 @@ export async function runPrompt(
     run: async (agent) => {
       let result;
       try {
-        result = await agent.run(trimmed, files);
+        result = await agent.run(agentText, files);
       } catch (err) {
         throw err instanceof Error ? err : new Error("agent failed");
       }

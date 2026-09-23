@@ -100,9 +100,45 @@ Omit `machineId` for startup validation; include it to activate a new
 machine. Limit: 10 machines per license. Machine fingerprints are hashed
 before storage. Rate limit: 30/min/IP.
 
+## Model providers (which free LLM answers the first prompt)
+
+Free models are wired so the very first prompt works: the engine walks the free
+registry and runs the first model that has a key — the user's own (Settings →
+API keys) or the platform's env var.
+
+| Model | Provider | Platform env var | Notes |
+| --- | --- | --- | --- |
+| GLM Flash (default) | Z.ai | `ZAI_API_KEY` | `glm-4.7-flash`, priced at $0 by Z.ai |
+| Gemini Flash | Google | `GEMINI_API_KEY` | free tier with quotas |
+| Claude / GPT | Anthropic, OpenAI | `VIBECODER_ANTHROPIC_API_KEY`, `VIBECODER_OPENAI_API_KEY` | credits tier |
+
+**Do not use an OpenCode Zen key for free models.** Zen gates its free tier to
+the OpenCode app itself; every other caller — including your own server with a
+valid key — gets `403 FreeTierError: "OpenCode's free tier can only be used from
+within OpenCode"`. Zen's *paid* models do work from a server (they need account
+funds), so `OPENCODE_API_KEY` is only useful for those. Failures now surface the
+provider's own message, so a provider gate reads as a sentence rather than
+`agent API responded 403`.
+
+A rotated upstream model id is an env change, not a deploy:
+`VIBECODER_MODEL_GLM_FLASH=glm-4.6-flash`.
+
 ## Releases
 
-Download links point at `/releases/Vibecoder-<version>-<platform>` paths —
-point them at GitHub Releases or object storage when binaries exist. The
-platform list and OS detection live in
-`src/components/download-buttons.tsx`.
+`v*` tags publish installers from GitHub Actions
+(`.github/workflows/release.yml`): each OS builds and signs its bundles,
+`scripts/updater-artifacts.mjs` renames them to the canonical asset names the
+update feed serves, and the run creates one release with `latest.json`.
+Prereleases (`v1.2.0-beta.1`) stay out of `releases/latest`.
+
+Required secret: `TAURI_SIGNING_PRIVATE_KEY` (updater signature — the app
+refuses unsigned updates). Optional: Apple signing/notarization secrets and
+`WINDOWS_CERTIFICATE`/`WINDOWS_CERTIFICATE_PASSWORD`. The workflow fails with an
+explanation when the Tauri shell (`src-tauri/`) is missing or its version does
+not match the tag.
+
+Download links are built from `NEXT_PUBLIC_RELEASES_BASE_URL` (default: this
+repo's `releases/latest/download`) plus the canonical asset names in
+`src/components/download-buttons.tsx`. A private repo serves those assets only
+to signed-in users — make the repo public or point that env var at a CDN before
+launching the download page.

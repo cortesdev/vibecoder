@@ -9,7 +9,7 @@ import ModelPicker, { useOutsideClose } from "@/components/app/model-picker";
 import PreviewPane from "./preview-pane";
 import UiPresetsPanel from "./ui-presets-panel";
 import IntegrationsPanel from "./integrations-panel";
-import { MODELS, PROVIDER_META } from "@/lib/models";
+import { MODELS, PROVIDER_META, DEFAULT_MODEL_ID } from "@/lib/models";
 import type { TokenUsage } from "@/lib/agent/types";
 
 // Right-hand tools column. Chat lives in its own separate panel; everything
@@ -274,7 +274,7 @@ export default function ProjectBuilder({
   const [selected, setSelected] = useState<string>(initialFiles[0]?.path ?? "");
   const [content, setContent] = useState(initialFiles[0]?.content ?? "");
   const [prompt, setPrompt] = useState("");
-  const [modelId, setModelId] = useState("big-pickle");
+  const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [mode, setMode] = useState<RunMode>("Build");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [busy, setBusy] = useState(false);
@@ -731,15 +731,49 @@ export default function ProjectBuilder({
         )}
 
         <form onSubmit={runAgent} className="shrink-0 p-3 pt-0">
+          <div className="mb-2 flex items-center gap-2">
+            <div
+              className="flex rounded-lg p-0.5"
+              style={{ background: "var(--bg-inset)" }}
+              role="tablist"
+              aria-label="Agent mode"
+            >
+              {MODES.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === m}
+                  className="rounded-md px-2.5 py-1 text-[12px] font-semibold"
+                  style={mode === m ? { background: "var(--ink)", color: "var(--bg)" } : { color: "var(--ink-2)" }}
+                  onClick={() => setMode(m)}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            <span
+              className="hidden text-[11px] sm:inline"
+              style={{ color: "var(--ink-3)" }}
+            >
+              ↩
+            </span>
+          </div>
+
           <label htmlFor="builder-prompt" className="sr-only">
             Tell the agent what to build
           </label>
           <textarea
             id="builder-prompt"
-            className="input min-h-[60px] w-full resize-none text-[14px]"
+            ref={boxRef}
+            className="input w-full resize-none text-[14px]"
+            style={{ minHeight: 60, height: 60, maxHeight: COMPOSER_MAX_HEIGHT, overflowY: "hidden" }}
             placeholder="Tell the agent what to build…"
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              autoresize();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -747,7 +781,58 @@ export default function ProjectBuilder({
               }
             }}
           />
+
+          {attachments.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {attachments.map((a) => (
+                <span
+                  key={a.id}
+                  className="flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-[11.5px]"
+                  style={{ borderColor: "var(--hairline)", background: "var(--bg-inset)" }}
+                >
+                  {a.url ? (
+                    <img src={a.url} alt="" className="h-5 w-5 rounded object-cover" />
+                  ) : (
+                    <File size={12} aria-hidden="true" style={{ color: "var(--ink-3)" }} />
+                  )}
+                  <span className="mono max-w-[140px] truncate">{a.name}</span>
+                  <span className="shrink-0" style={{ color: "var(--ink-3)" }}>
+                    {fmtSize(a.size)}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded p-0.5 hover:opacity-70"
+                    aria-label={`Remove ${a.name}`}
+                    onClick={() => removeAttachment(a.id)}
+                  >
+                    <X size={11} aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
           <div className="mt-2 flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              accept="image/*,video/*,audio/*,.pdf,.txt,.md,.json,.csv,.svg,.zip,.png,.jpg,.jpeg,.webp,.gif,.mp4,.mov,.webm"
+              onChange={(e) => {
+                void attachFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="chip"
+              aria-label="Attach images, videos or files"
+              title="Attach images, videos or files"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip size={14} aria-hidden="true" />
+            </button>
             <ModelPicker value={modelId} onChange={setModelId} balance={balance} />
             {freeTokens > 0 ? (
               <button
@@ -770,11 +855,8 @@ export default function ProjectBuilder({
                 Buy credits
               </Link>
             ) : null}
-            <span className="hidden text-[11px] sm:inline" style={{ color: "var(--ink-3)" }}>
-              ↩
-            </span>
             <button type="submit" className="btn btn-primary btn-sm ml-auto" disabled={busy || !prompt.trim()}>
-              {busy ? "Working…" : "Run agent"}
+              {workingLabel()}
             </button>
           </div>
         </form>

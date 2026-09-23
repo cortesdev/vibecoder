@@ -46,12 +46,31 @@ function call(modelId: string, useFreeTokens?: boolean) {
   };
 }
 
+// Provider keys come from the environment, so clear the ones the registry can
+// read: a developer with ZAI_API_KEY / GEMINI_API_KEY exported would otherwise
+// change what these tests exercise.
+const PLATFORM_KEY_VARS = [
+  "VIBECODER_ZAI_API_KEY",
+  "ZAI_API_KEY",
+  "Z_AI_API_KEY",
+  "VIBECODER_GEMINI_API_KEY",
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+  "OPENCODE_API_KEY",
+  "VIBECODER_OPENCODE_API_KEY",
+  "VIBECODER_MODEL_GLM_FLASH",
+  "VIBECODER_MODEL_GEMINI_FLASH",
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.debitForRun.mockResolvedValue(true);
+  for (const name of PLATFORM_KEY_VARS) delete process.env[name];
 });
 
 describe("runModelPrompt — free-token wallet", () => {
+  // (the free model chain itself is covered further down)
   it("pays from the wallet when it covers the run, and never touches credits", async () => {
     // sonnet costs 8 credits => 80,000 free tokens needed.
     mocks.ensureFreeWallet.mockResolvedValue({ granted: 100_000, balance: 90_000 });
@@ -151,11 +170,65 @@ describe("runModelPrompt — free-token wallet", () => {
   });
 
   it("never involves the wallet for an always-free model", async () => {
-    const outcome = await call("big-pickle").promise;
+    const outcome = await call("glm-flash").promise;
 
     expect(outcome.creditsSpent).toBeUndefined(); // free models are never billed
     expect(mocks.ensureFreeWallet).not.toHaveBeenCalled();
     expect(mocks.spendFreeTokens).not.toHaveBeenCalled();
+    expect(mocks.debitForRun).not.toHaveBeenCalled();
+  });
+});
+
+describe("runModelPrompt — the free model chain", () => {
+  it("runs the requested free model when the platform holds its key", async () => {
+    process.env.GEMINI_API_KEY = "gemini-test-key";
+
+    const outcome = await call("gemini-flash").promise;
+
+    expect(outcome.ok).toBe(true);
+    expect(outcome.modelId).toBe("gemini-flash");
+    expect(outcome.notice).toBeUndefined();
+  });
+
+  it("falls through to another free model instead of dead-ending", async () => {
+    process.env.ZAI_API_KEY = "zai-test-key"; // glm-flash only; Google has no key
+
+    const outcome = await call("gemini-flash").promise;
+
+    expect(outcome.ok).toBe(true);
+    expect(outcome.modelId).toBe("glm-flash");
+    expect(outcome.modelLabel).toBe("GLM Flash");
+    expect(outcome.notice).toContain("Gemini Flash");
+    expect(mocks.debitForRun).not.toHaveBeenCalled();
+  });
+
+  it("honours a per-model id override so a rotated upstream id is an env change", async () => {
+    process.env.ZAI_API_KEY = "zai-test-key";
+    process.env.VIBECODER_MODEL_GLM_FLASH = "glm-9.9-flash";
+    const seen: string[] = [];
+
+    const outcome = await runModelPrompt({
+      userId: "u1",
+      projectId: "p1",
+      modelId: "glm-flash",
+      prompt: "build",
+      files: {},
+      run: async (agent) => {
+        seen.push(JSON.stringify(agent));
+        return { edits: [], usage: USAGE };
+      },
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(seen[0]).toContain("glm-9.9-flash");
+  });
+
+  it("names the env var to set when no free provider has a key", async () => {
+    const outcome = await call("glm-flash").promise;
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toContain("ZAI_API_KEY");
+    expect(outcome.error).toContain("GLM Flash");
     expect(mocks.debitForRun).not.toHaveBeenCalled();
   });
 });

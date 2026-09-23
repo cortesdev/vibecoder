@@ -9,12 +9,23 @@ export interface Platform {
   href: string;
 }
 
+// Versionless on purpose: `releases/latest/download/<name>` only resolves when
+// the asset name is identical in every release, and these are exactly the names
+// the release workflow publishes (scripts/updater-artifacts.mjs). Point
+// NEXT_PUBLIC_RELEASES_BASE_URL at a CDN or object store to serve them from
+// somewhere else — a private repo only serves them to signed-in users.
+const RELEASES_BASE = (
+  process.env.NEXT_PUBLIC_RELEASES_BASE_URL ?? "https://github.com/cortesdev/vibecoder/releases/latest/download"
+).replace(/\/$/, "");
+
+const asset = (name: string) => `${RELEASES_BASE}/${name}`;
+
 export const DESKTOP_PLATFORMS: Platform[] = [
-  { id: "mac-arm64", label: "macOS", note: "Apple Silicon", href: "/releases/Vibecoder-1.0.0-arm64-mac.dmg" },
-  { id: "mac-x64", label: "macOS", note: "Intel", href: "/releases/Vibecoder-1.0.0-x64-mac.dmg" },
-  { id: "win-x64", label: "Windows", note: "x64", href: "/releases/Vibecoder-1.0.0-x64-win.exe" },
-  { id: "linux-deb", label: "Linux", note: ".deb", href: "/releases/Vibecoder-1.0.0-amd64.deb" },
-  { id: "linux-rpm", label: "Linux", note: ".rpm", href: "/releases/Vibecoder-1.0.0-x86_64.rpm" },
+  { id: "mac-arm64", label: "macOS", note: "Apple Silicon", href: asset("Vibecoder-arm64-mac.dmg") },
+  { id: "mac-x64", label: "macOS", note: "Intel", href: asset("Vibecoder-x64-mac.dmg") },
+  { id: "win-x64", label: "Windows", note: "x64", href: asset("Vibecoder-x64-win.exe") },
+  { id: "linux-deb", label: "Linux", note: ".deb", href: asset("Vibecoder-amd64.deb") },
+  { id: "linux-rpm", label: "Linux", note: ".rpm", href: asset("Vibecoder-x86_64.rpm") },
 ];
 
 export function detectPlatform(userAgent: string): Platform | null {

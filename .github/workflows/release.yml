@@ -243,6 +243,13 @@ jobs:
           ref: ${{ env.TAG }}
           fetch-depth: 0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Every runner's assets land side by side. Only the per-platform marker
+      # files (platform-<key>.json) would collide if they shared a name, which
+      # is why collect writes one file per platform.
       - uses: actions/download-artifact@v4
         with:
           pattern: update-*
@@ -289,5 +296,11 @@ jobs:
           else
             flags+=(--latest)
           fi
-          gh release create "$TAG" "${flags[@]}" release-assets/*
+          # Publish the installers, the updater bundles and their signatures —
+          # not the platform-*.json bookkeeping.
+          shopt -s nullglob
+          assets=(release-assets/*.tar.gz release-assets/*.zip release-assets/*.dmg release-assets/*.exe \
+                  release-assets/*.deb release-assets/*.rpm release-assets/*.sig release-assets/latest.json)
+          echo "publishing ${#assets[@]} assets"
+          gh release create "$TAG" "${flags[@]}" "${assets[@]}"
           echo "::notice::released $TAG — the feed picks it up within 5 minutes"
