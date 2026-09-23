@@ -424,68 +424,7 @@ export default function ProjectBuilder({
 
   return (
     <div className="flex min-h-[calc(100dvh-150px)] gap-0" style={{ alignItems: "stretch" }}>
-      {/* Files tree */}
-      <aside
-        aria-label="Project files"
-        className="card flex shrink-0 flex-col overflow-hidden"
-        style={{ width: treeW, minWidth: 140, maxWidth: 420 }}
-      >
-        <div className="flex items-center justify-between px-3 py-2.5" style={{ borderBottom: "1px solid var(--hairline)" }}>
-          <h2 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>
-            Files
-          </h2>
-          <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
-            {files.length}
-          </span>
-        </div>
-        <ul className="flex-1 overflow-y-auto p-2">
-          {files.map((f) => (
-            <li key={f.path}>
-              <button
-                type="button"
-                onClick={() => pick(f.path)}
-                className="mono w-full truncate rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5"
-                aria-current={f.path === selected ? "true" : undefined}
-                style={
-                  f.path === selected
-                    ? { background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }
-                    : { color: "var(--ink-2)" }
-                }
-              >
-                {f.path}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </aside>
-
-      <Sash onDelta={nudgeTree} ariaLabel="Resize file tree" />
-
-      {/* Editor column */}
-      <section className="card flex min-w-0 flex-1 flex-col overflow-hidden" aria-label="Editor">
-        <div
-          className="flex shrink-0 items-center justify-between gap-3 px-4 py-2.5"
-          style={{ borderBottom: "1px solid var(--hairline)" }}
-        >
-          <span className="mono truncate text-[12.5px]" style={{ color: "var(--ink-2)" }}>
-            {selected || "select a file"}
-          </span>
-          <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={!selected || busy}>
-            Save
-          </button>
-        </div>
-        <div className="min-h-[420px] flex-1 lg:min-h-0">
-          {selected ? (
-            <FileEditor path={selected} value={content} onChange={setContent} />
-          ) : (
-            <p className="muted p-4 text-sm">Select a file to edit it.</p>
-          )}
-        </div>
-      </section>
-
-      <Sash onDelta={nudgeChat} ariaLabel="Resize agent panel" />
-
-      {/* Workspace panel (tabs: Chat · Preview · UI Presets · Integrations) */}
+        {/* Workspace panel (tabs: Chat · Preview · UI Presets · Integrations) */}
       <aside
         className="card flex shrink-0 flex-col overflow-hidden"
         style={{ width: chatW, minWidth: 300, maxWidth: 640 }}
@@ -710,6 +649,69 @@ export default function ProjectBuilder({
           <IntegrationsPanel />
         )}
       </aside>
+      
+      {/* Files tree */}
+      <aside
+        aria-label="Project files"
+        className="card flex shrink-0 flex-col overflow-hidden"
+        style={{ width: treeW, minWidth: 140, maxWidth: 420 }}
+      >
+        <div className="flex items-center justify-between px-3 py-2.5" style={{ borderBottom: "1px solid var(--hairline)" }}>
+          <h2 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>
+            Files
+          </h2>
+          <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
+            {files.length}
+          </span>
+        </div>
+        <ul className="flex-1 overflow-y-auto p-2">
+          {files.map((f) => (
+            <li key={f.path}>
+              <button
+                type="button"
+                onClick={() => pick(f.path)}
+                className="mono w-full truncate rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5"
+                aria-current={f.path === selected ? "true" : undefined}
+                style={
+                  f.path === selected
+                    ? { background: "color-mix(in srgb, var(--accent) 14%, transparent)", color: "var(--accent)" }
+                    : { color: "var(--ink-2)" }
+                }
+              >
+                {f.path}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </aside>
+
+      <Sash onDelta={nudgeTree} ariaLabel="Resize file tree" />
+
+      {/* Editor column */}
+      <section className="card flex min-w-0 flex-1 flex-col overflow-hidden" aria-label="Editor">
+        <div
+          className="flex shrink-0 items-center justify-between gap-3 px-4 py-2.5"
+          style={{ borderBottom: "1px solid var(--hairline)" }}
+        >
+          <span className="mono truncate text-[12.5px]" style={{ color: "var(--ink-2)" }}>
+            {selected || "select a file"}
+          </span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={!selected || busy}>
+            Save
+          </button>
+        </div>
+        <div className="min-h-[420px] flex-1 lg:min-h-0">
+          {selected ? (
+            <FileEditor path={selected} value={content} onChange={setContent} />
+          ) : (
+            <p className="muted p-4 text-sm">Select a file to edit it.</p>
+          )}
+        </div>
+      </section>
+
+      <Sash onDelta={nudgeChat} ariaLabel="Resize agent panel" />
+
+    
     </div>
   );
 }
