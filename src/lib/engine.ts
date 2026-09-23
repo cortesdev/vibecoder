@@ -118,7 +118,7 @@ export async function runModelPrompt(input: {
 
   if (!debited) {
     const fb = getModel(FREE_FALLBACK_ID)!;
-    const { agent, problem } = await resolveAgent(input.userId, fb);
+    const { agent } = await resolveAgent(input.userId, fb);
     if (!agent) {
       return {
         ok: false,

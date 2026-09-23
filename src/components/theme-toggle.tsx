@@ -1,34 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 
-// Theme switch. Persists to localStorage("vc-theme"); the no-FOUC inline
-// script in the root layout applies it before first paint. Default: dark.
+// Theme switch. The DOM (<html data-theme>) is the store: the inline pre-paint
+// script in the root layout applies the saved value before first paint (no
+// flash), and this component reads it via useSyncExternalStore. Dark default.
+const LISTENERS = new Set<() => void>();
+
+function subscribe(listener: () => void) {
+  LISTENERS.add(listener);
+  return () => LISTENERS.delete(listener);
+}
+
+function getSnapshot(): "dark" | "light" {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+function getServerSnapshot(): "dark" {
+  return "dark";
+}
+
 export default function ThemeToggle({ className = "sidebar-link w-full text-left" }: { className?: string }) {
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
-  useEffect(() => {
-    const current = document.documentElement.dataset.theme;
-    if (current === "light" || current === "dark") {
-      // Sync after mount: the inline pre-paint script already applied the saved theme.
-      setTheme(current);
-    }
-  }, []);
-
-  function toggle() {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
+  const toggle = useCallback(() => {
+    const next = getSnapshot() === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     try {
       localStorage.setItem("vc-theme", next);
     } catch {
       // private mode: session-only theme
     }
-  }
+    LISTENERS.forEach((l) => l());
+  }, []);
 
   return (
-    <button type="button" className={className} onClick={toggle} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
+    <button
+      type="button"
+      className={className}
+      onClick={toggle}
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+    >
       {theme === "dark" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}
       {theme === "dark" ? "Light mode" : "Dark mode"}
     </button>
