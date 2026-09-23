@@ -146,10 +146,10 @@ export async function runModelPrompt(input: {
     }
   }
 
-  const { agent, problem } = await resolveAgent(input.userId, model);
+  const { agent } = await resolveAgent(input.userId, model);
   if (!agent) {
     await refundRun({ userId: input.userId, cost: model.cost, ref });
-    return { ok: false, error: problem ?? "Model unavailable — credits refunded." };
+    return { ok: false, error: "Model unavailable — credits refunded." };
   }
 
   try {

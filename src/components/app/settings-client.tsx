@@ -64,8 +64,9 @@ export default function SettingsClient({
       body: JSON.stringify({ pack: credits, mode: demoCheckout ? "test" : "live" }),
     });
     const data = (await res.json()) as { ok: boolean; url?: string; error?: string };
-    if (data.ok && data.url) {
-      window.location.href = data.url;
+    const url = data.url;
+    if (data.ok && url) {
+      window.location.assign(url);
     } else {
       setBuyMsg(data.error ?? "Checkout unavailable right now.");
     }

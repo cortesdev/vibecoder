@@ -9,7 +9,11 @@ export default function ThemeToggle({ className = "sidebar-link w-full text-left
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
-    setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+    const current = document.documentElement.dataset.theme;
+    if (current === "light" || current === "dark") {
+      // Sync after mount: the inline pre-paint script already applied the saved theme.
+      setTheme(current);
+    }
   }, []);
 
   function toggle() {

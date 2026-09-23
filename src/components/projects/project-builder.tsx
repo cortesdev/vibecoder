@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { createTwoFilesPatch } from "diff";
 import { FilePlus2 } from "lucide-react";
 import FileEditor from "./editor";
@@ -130,14 +130,14 @@ export default function ProjectBuilder({
   const [treeW, setTreeW] = useState(190);
   const [chatW, setChatW] = useState(400);
 
-  const filesByPath = useRef<Record<string, string>>(
-    Object.fromEntries(initialFiles.map((f) => [f.path, f.content])),
+  const filesByPath = useMemo(
+    () => Object.fromEntries(files.map((f) => [f.path, f.content])),
+    [files],
   );
-  filesByPath.current = Object.fromEntries(files.map((f) => [f.path, f.content]));
 
   function pick(path: string) {
     setSelected(path);
-    setContent(filesByPath.current[path] ?? "");
+    setContent(filesByPath[path] ?? "");
   }
 
   const nudgeTree = useCallback((dx: number) => {

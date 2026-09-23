@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { getStripe } from "@/lib/stripe";
-import { keySetFor, liveEnabled, testEnabled, type StripeMode } from "@/lib/env";
+import { liveEnabled, testEnabled, type StripeMode } from "@/lib/env";
 import { CREDIT_PACKS } from "@/lib/credits";
 import { rateLimit } from "@/lib/ratelimit";
 
