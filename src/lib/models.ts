@@ -35,12 +35,14 @@ export const MODELS: ModelDef[] = [
     provider: "zai",
     tier: "free",
     cost: 0,
+    // Verified against docs.z.ai (api-reference/llm/chat-completion lists the
+    // model enum; guides/overview/pricing lists GLM-4.7-Flash at $0 for input,
+    // cached input and output). glm-4.5-flash and glm-4.6v-flash are also $0.
+    // "glm-4.7-flashx" is the paid sibling — do not confuse the two.
     model: "glm-4.7-flash",
     byok: true,
     contextLimit: 200000,
-    // Z.ai prices whole models at zero; glm-4.5-flash and glm-4.6v-flash are
-    // free too. Override with VIBECODER_MODEL_GLM_FLASH if Z.ai rotates them.
-    note: "Free on Z.ai — works right after sign-in, or bring your own Z.ai key.",
+    note: "Z.ai's free tier: GLM-4.7-Flash is priced at $0. Key from z.ai, or served by the platform.",
   },
   {
     id: "gemini-flash",
@@ -48,10 +50,13 @@ export const MODELS: ModelDef[] = [
     provider: "google",
     tier: "free",
     cost: 0,
+    // Verified against ai.google.dev (gemini-api/docs/openai gives the base URL
+    // and this model id; gemini-api/docs/rate-limits defines the Free usage tier
+    // as RPM/TPM/RPD quotas per project, RPD resetting at midnight Pacific).
     model: "gemini-3.8-flash",
     byok: true,
     contextLimit: 1000000,
-    note: "Google's free tier — bring your own Gemini key, or use the platform's.",
+    note: "Google's free tier (quota-limited): key from Google AI Studio, or served by the platform.",
   },
   {
     id: "sonnet",
