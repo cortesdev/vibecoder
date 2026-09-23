@@ -35,6 +35,20 @@ function connection() {
 
 const migrationsDir = path.join(process.cwd(), "prisma", "migrations");
 
+async function probeTurso(conn) {
+  if (!conn.authToken) return;
+  const endpoint = `${conn.url.replace(/^libsql:/, "https:")}/v2/pipeline`;
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${conn.authToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ requests: [{ type: "execute", stmt: { sql: "SELECT 1" } }] }),
+  });
+  console.log(`probe ${res.status}: ${(await res.text()).slice(0, 500)}`);
+}
+
 async function main() {
   const conn = connection();
 
@@ -96,7 +110,12 @@ async function main() {
   await client.close();
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error("migrate failed:", err);
+  try {
+    await probeTurso(connection());
+  } catch (e) {
+    console.error("probe also failed:", e.message);
+  }
   process.exit(1);
 });
