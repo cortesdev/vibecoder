@@ -42,29 +42,32 @@ export async function fulfillLicense(input: {
   paymentIntent?: string;
   testMode?: boolean;
 }): Promise<FulfillmentResult> {
-  const existing = await db.orm.public.License
-    .where({ stripeSessionId: input.sessionId })
-    .first();
+  const existing = await db.license.findUnique({
+    where: { stripeSessionId: input.sessionId },
+  });
   if (existing) {
     return { licenseKey: existing.key, created: false };
   }
   const key = input.testMode
     ? `TEST-${generateLicenseKey(input.sessionId)}`
     : generateLicenseKey(input.sessionId);
-  await db.orm.public.License.create({
-    key,
-    email: input.email,
-    stripeSessionId: input.sessionId,
-    stripePaymentIntent: input.paymentIntent ?? "",
+  await db.license.create({
+    data: {
+      key,
+      email: input.email,
+      stripeSessionId: input.sessionId,
+      stripePaymentIntent: input.paymentIntent ?? "",
+    },
   });
   return { licenseKey: key, created: true };
 }
 
 export async function revokeByPaymentIntent(paymentIntent: string): Promise<void> {
   if (!paymentIntent) return;
-  await db.orm.public.License
-    .where({ stripePaymentIntent: paymentIntent })
-    .updateAll({ status: "revoked" });
+  await db.license.updateMany({
+    where: { stripePaymentIntent: paymentIntent },
+    data: { status: "revoked" },
+  });
 }
 
 /** Hash the client-provided machine id; we never store raw fingerprints. */
@@ -86,24 +89,22 @@ export async function validateLicense(
   machineId?: string,
   label?: string,
 ): Promise<ValidateResult> {
-  const license = await db.orm.public.License
-    .where({ key: key.trim().toUpperCase() })
-    .include("activations")
-    .first();
+  const license = await db.license.findUnique({
+    where: { key: key.trim().toUpperCase() },
+    include: { activations: true },
+  });
   if (!license) return { ok: false, reason: "not_found" };
   if (license.status === "revoked") return { ok: false, reason: "revoked" };
 
   if (machineId) {
     const hashed = hashMachineId(machineId);
-    const known = license.activations.some((a: { machineId: string }) => a.machineId === hashed);
+    const known = license.activations.some((a) => a.machineId === hashed);
     if (!known) {
       if (license.activations.length >= MAX_MACHINES) {
         return { ok: false, reason: "limit_reached" };
       }
-      await db.orm.public.LicenseActivation.create({
-        licenseId: license.id,
-        machineId: hashed,
-        label: (label ?? "").slice(0, 80),
+      await db.licenseActivation.create({
+        data: { licenseId: license.id, machineId: hashed, label: (label ?? "").slice(0, 80) },
       });
       return { ok: true, email: license.email, machines: license.activations.length + 1 };
     }

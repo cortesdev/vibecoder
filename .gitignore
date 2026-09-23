@@ -27,7 +27,6 @@
 # local db & tool state
 vibecode.db*
 licenses.db*
-*.sqlite
 .freebuff/
 *.tsbuildinfo
 
