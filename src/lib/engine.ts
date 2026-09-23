@@ -100,43 +100,74 @@ function platformConfig(m: ModelDef): LlmConfig | null {
   return { apiKey, baseUrl, model: modelStringFor(m), ...agentMeta(m) };
 }
 
-async function resolveAgent(
+/** Where a model's request would go, and with whose key. */
+export interface ProviderAccess extends LlmConfig {
+  /** "user" when their own Settings key is used, "platform" for our env key. */
+  source: "user" | "platform";
+}
+
+/**
+ * The one resolution order for a model's provider access: the user's own BYO
+ * key first, then the platform's env key. Both the agent run and the readiness
+ * check go through here, so which key answers — and what is reported when none
+ * can — is decided in exactly one place.
+ */
+export async function resolveProviderAccess(
   userId: string,
   model: ModelDef,
-): Promise<{ agent: Agent | null; problem?: string }> {
+): Promise<
+  | { kind: "access"; access: ProviderAccess }
+  | { kind: "missing_key"; problem: string }
+  | { kind: "unconfigured" }
+> {
   // 1. The user's own BYO key wins when they've added one.
   if (model.byok) {
     const key = (await keyFor(userId, model.provider))?.trim();
     const baseUrl = baseUrlFor(model.provider);
     if (key && baseUrl) {
       return {
-        agent: new LlmAgent({
+        kind: "access",
+        access: {
           apiKey: key,
           baseUrl,
           model: modelStringFor(model),
+          source: "user",
           ...agentMeta(model),
-        }),
+        },
       };
     }
   }
 
   // 2. Platform key fallback — lets online users run without adding a key of
-  // their own when the platform provides one (e.g. OPENCODE_API_KEY).
+  // their own when the platform provides one (e.g. ZAI_API_KEY).
   const cfg = platformConfig(model);
-  if (cfg) return { agent: new LlmAgent(cfg) };
+  if (cfg) return { kind: "access", access: { ...cfg, source: "platform" } };
 
   if (model.byok || model.tier === "free") {
     const who = PROVIDER_META[model.provider].label;
     return {
-      agent: null,
+      kind: "missing_key",
       problem: `${model.label} needs a ${who} API key: add one in Settings → API keys, or set ${keyEnvNames(
         model,
       )} in the environment. An empty value counts as unset.`,
     };
   }
 
-  // Credits tier: platform key required; if we don't have one configured,
-  // degrade to the mock so the product still works end to end.
+  return { kind: "unconfigured" };
+}
+
+async function resolveAgent(
+  userId: string,
+  model: ModelDef,
+): Promise<{ agent: Agent | null; problem?: string }> {
+  const resolved = await resolveProviderAccess(userId, model);
+  // ProviderAccess is a LlmConfig plus where the key came from, so the agent
+  // takes it as-is.
+  if (resolved.kind === "access") return { agent: new LlmAgent(resolved.access) };
+  if (resolved.kind === "missing_key") return { agent: null, problem: resolved.problem };
+
+  // Credits tier with no platform key: degrade to the mock so the product
+  // still works end to end.
   return { agent: new MockAgent() };
 }
 

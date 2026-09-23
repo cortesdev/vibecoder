@@ -120,5 +120,16 @@ export const PROVIDER_META: Record<ProviderId, { label: string; blurb: string }>
   openai: { label: "OpenAI", blurb: "Hosted — billed in credits" },
 };
 
+/**
+ * Providers a user can bring their own key for — every provider the registry
+ * knows except our own hosted tier. The keys endpoint validates against this,
+ * so any provider that shows up in the picker can actually be configured: the
+ * hand-written list it replaced had drifted out of sync and rejected Google
+ * keys while the registry shipped a free Gemini model.
+ */
+export const BYO_PROVIDERS: ProviderId[] = (Object.keys(PROVIDER_META) as ProviderId[]).filter(
+  (p) => p !== "vibecoder",
+);
+
 /** Fallback chain when a paid run can't be billed: → free default. */
 export const FREE_FALLBACK_ID = "glm-flash";

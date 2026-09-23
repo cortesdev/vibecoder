@@ -1,22 +1,29 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { setUserKey, deleteUserKey, listUserKeyProviders } from "@/lib/userkeys";
-import { PROVIDER_META } from "@/lib/models";
+import { BYO_PROVIDERS } from "@/lib/models";
+import { checkFreeReadiness, invalidateReadiness } from "@/lib/readiness";
 
 // BYO provider keys. Only the provider list ever leaves the server — never
-// the key material itself.
+// the key material itself. The accepted providers come from the model
+// registry (BYO_PROVIDERS) so the endpoint can never reject a provider the
+// picker and the engine both support.
 //
-// The allow-list is derived from the model registry instead of hand-written:
-// a hand-written list silently drifted (it rejected "google" while the registry
-// shipped a free Gemini model whose key the engine reads from the same table),
-// so every provider the registry knows is accepted here automatically.
-const KEY_PROVIDERS: string[] = Object.keys(PROVIDER_META).filter((p) => p !== "vibecoder");
+// Every response also carries `readiness`: whether each free model can
+// actually answer right now, in the provider's own words. A key that is saved
+// but rejected is the case that used to fail silently until the user typed a
+// prompt, so saving and removing a key re-probes instead of trusting that the
+// request succeeded.
 
-export async function GET() {
+export async function GET(req: Request) {
   const { user } = await requireUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
-  const providers = await listUserKeyProviders(user.id);
-  return NextResponse.json({ ok: true, providers });
+  const refresh = new URL(req.url).searchParams.get("refresh") === "1";
+  const [providers, readiness] = await Promise.all([
+    listUserKeyProviders(user.id),
+    checkFreeReadiness(user.id, { refresh }),
+  ]);
+  return NextResponse.json({ ok: true, providers, readiness });
 }
 
 export async function POST(req: Request) {
@@ -30,15 +37,20 @@ export async function POST(req: Request) {
   const provider = body?.provider ?? "";
   const key = typeof body?.key === "string" ? body.key : "";
 
-  if (!KEY_PROVIDERS.includes(provider)) {
+  if (!(BYO_PROVIDERS as string[]).includes(provider)) {
     return NextResponse.json(
-      { ok: false, error: `unknown provider (expected one of ${KEY_PROVIDERS.join(", ")})` },
+      { ok: false, error: `unknown provider (expected one of ${BYO_PROVIDERS.join(", ")})` },
       { status: 400 },
     );
   }
 
   await setUserKey(user.id, provider, key);
-  return NextResponse.json({ ok: true });
+  invalidateReadiness(user.id);
+  const [providers, readiness] = await Promise.all([
+    listUserKeyProviders(user.id),
+    checkFreeReadiness(user.id, { refresh: true }),
+  ]);
+  return NextResponse.json({ ok: true, providers, readiness });
 }
 
 export async function DELETE(req: Request) {
@@ -46,7 +58,12 @@ export async function DELETE(req: Request) {
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
   const { searchParams } = new URL(req.url);
   const provider = searchParams.get("provider") ?? "";
-  if (!provider) return NextResponse.json({ ok: false }, { status: 400 });
+  if (!provider) return NextResponse.json({ ok: false, error: "provider required" }, { status: 400 });
   await deleteUserKey(user.id, provider);
-  return NextResponse.json({ ok: true });
+  invalidateReadiness(user.id);
+  const [providers, readiness] = await Promise.all([
+    listUserKeyProviders(user.id),
+    checkFreeReadiness(user.id, { refresh: true }),
+  ]);
+  return NextResponse.json({ ok: true, providers, readiness });
 }

@@ -4,6 +4,7 @@ import { findOwnedProject } from "@/lib/projects";
 import { currentUser } from "@/lib/auth";
 import { getBalance, ensureWallet } from "@/lib/credits";
 import { ensureFreeWallet, getFreeBalance } from "@/lib/freewallet";
+import { checkFreeReadiness } from "@/lib/readiness";
 import ProjectBuilder from "@/components/projects/project-builder";
 import DeleteProject from "@/components/projects/delete-project";
 
@@ -22,10 +23,11 @@ export default async function ProjectPage({
   const user = await currentUser();
   if (!user) notFound();
 
-  const [project, balance, freeTokens] = await Promise.all([
+  const [project, balance, freeTokens, readiness] = await Promise.all([
     findOwnedProject(user.id, id),
     ensureWallet(user.id).then(() => getBalance(user.id)),
     ensureFreeWallet(user.id).then(() => getFreeBalance(user.id)),
+    checkFreeReadiness(user.id),
   ]);
   if (!project) notFound();
 
@@ -61,6 +63,7 @@ export default async function ProjectPage({
         initialNotice={notice}
         balance={balance}
         freeTokens={freeTokens}
+        readiness={readiness}
       />
     </div>
   );

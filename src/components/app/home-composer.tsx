@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowUp, Wallet } from "lucide-react";
 import ModelPicker from "./model-picker";
 import { MODELS, DEFAULT_MODEL_ID } from "@/lib/models";
+import type { ModelReadiness } from "@/lib/readiness";
 
 // Freebuff-style home composer: type an idea, then a short 3-question
 // narrowing interview (with option chips you can answer in one tap) before the
@@ -99,7 +100,15 @@ function nameFromPrompt(prompt: string): string {
   return (words.length > 42 ? `${words.slice(0, 42)}…` : words) || "New project";
 }
 
-export default function HomeComposer({ balance, freeTokens: initialFreeTokens }: { balance: number; freeTokens: number }) {
+export default function HomeComposer({
+  balance,
+  freeTokens: initialFreeTokens,
+  readiness = [],
+}: {
+  balance: number;
+  freeTokens: number;
+  readiness?: ModelReadiness[];
+}) {
   const router = useRouter();
   const [prompt, setPrompt] = useState("");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
@@ -373,7 +382,12 @@ export default function HomeComposer({ balance, freeTokens: initialFreeTokens }:
             ))}
           </div>
 
-          <ModelPicker value={modelId} onChange={setModelId} balance={balance} />
+          <ModelPicker
+            value={modelId}
+            onChange={setModelId}
+            balance={balance}
+            readiness={readiness}
+          />
 
           {freeTokens > 0 ? (
             <button

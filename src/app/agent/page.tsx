@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { getBalance, ensureWallet } from "@/lib/credits";
 import { ensureFreeWallet, getFreeBalance } from "@/lib/freewallet";
+import { checkFreeReadiness } from "@/lib/readiness";
 import HomeComposer from "@/components/app/home-composer";
 import { FolderOpen } from "lucide-react";
 
@@ -15,12 +16,15 @@ function greeting(): string {
 
 export default async function AppHomePage() {
   const user = await currentUser();
-  const [balance, freeTokens] = user
+  const [balance, freeTokens, readiness] = user
     ? await Promise.all([
         ensureWallet(user.id).then(() => getBalance(user.id)),
         ensureFreeWallet(user.id).then(() => getFreeBalance(user.id)),
+        // Whether the free models can actually answer — shown on the picker
+        // before the user types anything. Cached briefly in readiness.ts.
+        checkFreeReadiness(user.id),
       ])
-    : [0, 0];
+    : [0, 0, []];
   const projects = user
     ? await db.project.findMany({
         where: { userId: user.id },
@@ -49,7 +53,7 @@ export default async function AppHomePage() {
       </p>
 
       <div className="hero-rise mt-8 w-full" style={{ "--i": 3 } as React.CSSProperties}>
-        <HomeComposer balance={balance} freeTokens={freeTokens} />
+        <HomeComposer balance={balance} freeTokens={freeTokens} readiness={readiness} />
       </div>
 
       {projects.length > 0 && (

@@ -45,7 +45,7 @@ function envNameFor(modelId: string | undefined): string {
   return `VIBECODER_MODEL_${suffix}`;
 }
 
-function providerErrorText(body: string): string {
+export function providerErrorText(body: string): string {
   const trimmed = body.trim();
   if (!trimmed) return "";
   try {
@@ -81,6 +81,22 @@ export function fixHintFor(status: number, config: Pick<LlmConfig, "providerLabe
   return `Check the ${who} key in ${SETTINGS_HINT} (or ${env}) and that ${config.baseUrl} is reachable.`;
 }
 
+/**
+ * One sentence a refusal has to carry, wherever it is reported: who refused,
+ * what they said, and the single action that fixes it. Shared by the agent
+ * run and the readiness check so the picker and a failed prompt cannot
+ * describe the same rejection in two different ways.
+ */
+export function refusalMessage(
+  status: number,
+  detail: string,
+  config: Pick<LlmConfig, "providerLabel" | "keyEnv" | "modelId" | "baseUrl">,
+): string {
+  const who = config.providerLabel ?? "the provider";
+  const what = config.modelId ? `the "${config.modelId}" model` : "this model";
+  return `${who} refused ${what} — HTTP ${status}${detail ? `, provider said: "${detail}"` : ""}. ${fixHintFor(status, config)}`;
+}
+
 async function httpError(res: Response, config: LlmConfig): Promise<Error> {
   let body = "";
   try {
@@ -88,12 +104,7 @@ async function httpError(res: Response, config: LlmConfig): Promise<Error> {
   } catch {
     body = "";
   }
-  const detail = providerErrorText(body);
-  const who = config.providerLabel ?? "the provider";
-  const what = config.modelId ? `the "${config.modelId}" model` : "this model";
-  return new Error(
-    `${who} refused ${what} — HTTP ${res.status}${detail ? `, provider said: "${detail}"` : ""}. ${fixHintFor(res.status, config)}`,
-  );
+  return new Error(refusalMessage(res.status, providerErrorText(body), config));
 }
 
 function parseEditsReply(reply: string): FileEdit[] {

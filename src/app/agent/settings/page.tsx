@@ -2,6 +2,7 @@ import { currentUser } from "@/lib/auth";
 import { getBalance, ensureWallet, CREDIT_PACKS } from "@/lib/credits";
 import { getFreeWallet, ensureFreeWallet } from "@/lib/freewallet";
 import { listUserKeyProviders } from "@/lib/userkeys";
+import { checkFreeReadiness } from "@/lib/readiness";
 import SettingsClient from "@/components/app/settings-client";
 import { testEnabled } from "@/lib/env";
 
@@ -10,12 +11,13 @@ export const metadata = { title: "Settings" };
 export default async function SettingsPage() {
   const user = await currentUser();
   const providers = user ? await listUserKeyProviders(user.id) : [];
-  const [balance, freeWallet] = user
+  const [balance, freeWallet, readiness] = user
     ? await Promise.all([
         ensureWallet(user.id).then(() => getBalance(user.id)),
         ensureFreeWallet(user.id).then(() => getFreeWallet(user.id)),
+        checkFreeReadiness(user.id),
       ])
-    : [0, { granted: 0, balance: 0 }];
+    : [0, { granted: 0, balance: 0 }, []];
 
   return (
     <main className="mx-auto w-full max-w-[680px] px-6 py-10">
@@ -31,6 +33,7 @@ export default async function SettingsPage() {
         demoCheckout={testEnabled}
         freeGranted={freeWallet.granted}
         freeBalance={freeWallet.balance}
+        initialReadiness={readiness}
       />
     </main>
   );

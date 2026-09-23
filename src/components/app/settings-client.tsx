@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Check, KeyRound, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, Check, KeyRound, RefreshCw, Trash2, Wallet } from "lucide-react";
+import { readinessLabel, readinessColor } from "./model-picker";
+import type { ModelReadiness } from "@/lib/readiness";
 
 // Every provider a user can bring a key for, in the order they should try
 // them. The two $0 tiers come first because they are what makes the first
@@ -23,6 +25,38 @@ interface Pack {
   label: string;
 }
 
+interface KeysResponse {
+  ok?: boolean;
+  providers?: string[];
+  readiness?: ModelReadiness[];
+}
+
+/** The verdict line for one provider, straight from what the provider said. */
+function ProviderStatus({ states }: { states: ModelReadiness[] }) {
+  if (states.length === 0) return null;
+  const worst = states.find((s) => s.status !== "live") ?? states[0];
+  const ok = states.every((s) => s.status === "live");
+  const label = readinessLabel(worst.status) ?? "checked";
+  return (
+    <p
+      className="mt-2 flex items-start gap-1.5 text-[12.5px] leading-relaxed"
+      style={{ color: readinessColor(worst.status) }}
+      data-readiness={worst.status}
+    >
+      {ok ? (
+        <Check size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
+      ) : (
+        <AlertTriangle size={13} aria-hidden="true" className="mt-0.5 shrink-0" />
+      )}
+      <span>
+        <span className="font-semibold uppercase tracking-wide text-[11px]">{label}</span>
+        {" — "}
+        {states.map((s) => s.message).join(" ")}
+      </span>
+    </p>
+  );
+}
+
 export default function SettingsClient({
   initialProviders,
   balance,
@@ -30,6 +64,7 @@ export default function SettingsClient({
   demoCheckout,
   freeGranted,
   freeBalance,
+  initialReadiness,
 }: {
   initialProviders: string[];
   balance: number;
@@ -37,25 +72,36 @@ export default function SettingsClient({
   demoCheckout: boolean;
   freeGranted: number;
   freeBalance: number;
+  initialReadiness: ModelReadiness[];
 }) {
   const [providers, setProviders] = useState<string[]>(initialProviders);
+  const [readiness, setReadiness] = useState<ModelReadiness[]>(initialReadiness);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
   const [buyMsg, setBuyMsg] = useState("");
 
+  function absorb(data: KeysResponse) {
+    if (Array.isArray(data.providers)) setProviders(data.providers);
+    if (Array.isArray(data.readiness)) setReadiness(data.readiness);
+  }
+
+  /** Save, then let the provider itself confirm the key — the save request
+   *  re-probes, so an accepted-looking key that is actually rejected is shown
+   *  here rather than surfacing as a mystery failure on the first prompt. */
   async function saveKey(providerId: string) {
     const key = drafts[providerId]?.trim();
     if (!key || busy) return;
-    setBusy(true);
+    setBusy(providerId);
     const res = await fetch("/api/app/keys", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ provider: providerId, key }),
     });
-    setBusy(false);
+    const data = (await res.json().catch(() => ({}))) as KeysResponse;
+    setBusy(null);
     if (res.ok) {
-      setProviders((p) => (p.includes(providerId) ? p : [...p, providerId]));
+      absorb(data);
       setDrafts((d) => ({ ...d, [providerId]: "" }));
       setSaved((s) => ({ ...s, [providerId]: true }));
       setTimeout(() => setSaved((s) => ({ ...s, [providerId]: false })), 2500);
@@ -63,10 +109,19 @@ export default function SettingsClient({
   }
 
   async function removeKey(providerId: string) {
-    setBusy(true);
-    await fetch(`/api/app/keys?provider=${providerId}`, { method: "DELETE" });
-    setBusy(false);
-    setProviders((p) => p.filter((x) => x !== providerId));
+    setBusy(providerId);
+    const res = await fetch(`/api/app/keys?provider=${providerId}`, { method: "DELETE" });
+    absorb((await res.json().catch(() => ({}))) as KeysResponse);
+    setBusy(null);
+  }
+
+  /** Re-ask the providers without touching any key. */
+  async function recheck() {
+    if (busy) return;
+    setBusy("__check__");
+    const res = await fetch("/api/app/keys?refresh=1");
+    absorb((await res.json().catch(() => ({}))) as KeysResponse);
+    setBusy(null);
   }
 
   async function buyPack(credits: number) {
@@ -92,10 +147,23 @@ export default function SettingsClient({
         <h2 id="keys-h" className="text-[17px] font-semibold">
           API keys
         </h2>
-        <p className="muted mt-1 text-[13.5px]">Free keys unlock the free models. Takes about a minute each.</p>
+        <p className="muted mt-1 text-[13.5px]">
+          Free keys unlock the free models. Takes about a minute each — and as soon as one is saved it is
+          checked against the provider, so you can see it working before you build anything.
+        </p>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm mt-3"
+          onClick={recheck}
+          disabled={busy !== null}
+        >
+          <RefreshCw size={13} aria-hidden="true" className={busy === "__check__" ? "animate-spin" : undefined} />
+          {busy === "__check__" ? "Checking…" : "Check keys again"}
+        </button>
         <div className="mt-4 flex flex-col gap-3">
           {KEY_PROVIDERS.map((p) => {
             const has = providers.includes(p.id);
+            const states = readiness.filter((r) => r.provider === p.id);
             return (
               <div key={p.id} className="card p-4">
                 <div className="flex items-center justify-between">
@@ -114,13 +182,14 @@ export default function SettingsClient({
                       type="button"
                       className="btn btn-secondary btn-sm"
                       onClick={() => removeKey(p.id)}
-                      disabled={busy}
+                      disabled={busy !== null}
                     >
                       <Trash2 size={13} aria-hidden="true" /> Remove
                     </button>
                   )}
                 </div>
                 <p className="muted mt-1.5 text-[13px]">{p.hint}</p>
+                <ProviderStatus states={states} />
                 <div className="mt-3 flex gap-2">
                   <input
                     type="password"
@@ -134,9 +203,15 @@ export default function SettingsClient({
                     type="button"
                     className="btn btn-primary btn-sm"
                     onClick={() => saveKey(p.id)}
-                    disabled={busy || !drafts[p.id]?.trim()}
+                    disabled={busy !== null || !drafts[p.id]?.trim()}
                   >
-                    {saved[p.id] ? <Check size={14} aria-hidden="true" /> : "Save"}
+                    {busy === p.id ? (
+                      "Checking…"
+                    ) : saved[p.id] ? (
+                      <Check size={14} aria-hidden="true" />
+                    ) : (
+                      "Save"
+                    )}
                   </button>
                 </div>
               </div>

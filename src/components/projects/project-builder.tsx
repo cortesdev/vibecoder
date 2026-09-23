@@ -10,6 +10,7 @@ import PreviewPane from "./preview-pane";
 import UiPresetsPanel from "./ui-presets-panel";
 import IntegrationsPanel from "./integrations-panel";
 import { MODELS, PROVIDER_META, DEFAULT_MODEL_ID } from "@/lib/models";
+import type { ModelReadiness } from "@/lib/readiness";
 import type { TokenUsage } from "@/lib/agent/types";
 
 // Right-hand tools column. Chat lives in its own separate panel; everything
@@ -261,6 +262,7 @@ export default function ProjectBuilder({
   initialNotice,
   balance,
   freeTokens: initialFreeTokens,
+  readiness = [],
 }: {
   projectId: string;
   initialFiles: ProjectFileDto[];
@@ -268,6 +270,7 @@ export default function ProjectBuilder({
   initialNotice?: string;
   balance: number;
   freeTokens: number;
+  readiness?: ModelReadiness[];
 }) {
   const [files, setFiles] = useState<ProjectFileDto[]>(initialFiles);
   const [changes, setChanges] = useState<ChangeDto[]>(initialChanges);
@@ -833,7 +836,12 @@ export default function ProjectBuilder({
             >
               <Paperclip size={14} aria-hidden="true" />
             </button>
-            <ModelPicker value={modelId} onChange={setModelId} balance={balance} />
+            <ModelPicker
+              value={modelId}
+              onChange={setModelId}
+              balance={balance}
+              readiness={readiness}
+            />
             {freeTokens > 0 ? (
               <button
                 type="button"
