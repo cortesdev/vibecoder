@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { getStripe } from "@/lib/stripe";
 import { env } from "@/lib/env";
 import { fulfillLicense, revokeByPaymentIntent } from "@/lib/licenses";
+import { purchaseCredits } from "@/lib/credits";
 
 // Stripe is the source of truth for payments. Events carry `livemode`, so a
 // single endpoint serves both: verify against the matching webhook secret and
@@ -41,6 +42,21 @@ export async function POST(req: Request) {
 
   switch (event.type) {
     case "checkout.session.completed": {
+      // Route by product metadata: license vs credit pack.
+      if ((event.data.object as Stripe.Checkout.Session).metadata?.product === "vibecoder-credits") {
+        const session = event.data.object as Stripe.Checkout.Session;
+        const userId = session.metadata?.userId ?? "";
+        const credits = Number(session.metadata?.credits ?? 0);
+        if (userId && credits > 0 && session.payment_status === "paid") {
+          await purchaseCredits({
+            userId,
+            credits,
+            stripeSessionId: session.id,
+            testMode: mode === "test",
+          });
+        }
+        break;
+      }
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.metadata?.product === "vibecoder-pro" && session.payment_status === "paid") {
         const paymentIntent =

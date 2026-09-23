@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
-:root {
+/* ── Theme tokens ──────────────────────────────────────────────────────────
+   Two themes: dark (default) and light. Everything reads from these vars —
+   to add a theme, add a :root[data-theme="…"] block with the same names. */
+:root,
+:root[data-theme="dark"] {
   --bg: #0a0a0c;
   --bg-raised: #111113;
   --bg-inset: #060607;
@@ -15,19 +19,23 @@
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  color-scheme: dark;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #fafafa;
-    --bg-raised: #ffffff;
-    --bg-inset: #f2f2f2;
-    --ink: #17171a;
-    --ink-2: #6b6b74;
-    --ink-3: #8f8f98;
-    --hairline: rgba(0, 0, 0, 0.1);
-    --terminal: #141416;
-  }
+/* Light: warm paper tone (per reference). Terminal/monaco stay dark by design. */
+:root[data-theme="light"] {
+  --bg: #f4f2ee;
+  --bg-raised: #fbfaf8;
+  --bg-inset: #eae7e1;
+  --ink: #1c1b18;
+  --ink-2: #6d6a63;
+  --ink-3: #97948c;
+  --hairline: rgba(0, 0, 0, 0.09);
+  --accent: #e8483f;
+  --accent-hover: #d63c33;
+  --good: #1e9e4f;
+  --terminal: #0d0d10;
+  color-scheme: light;
 }
 
 html { scroll-behavior: smooth; }
@@ -43,7 +51,7 @@ body {
   flex-direction: column;
 }
 main { flex: 1; }
-::selection { background: rgba(232, 72, 63, 0.35); }
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
 
 .skip-link {
@@ -81,6 +89,57 @@ main { flex: 1; }
   padding: 11px 14px; font: inherit; font-size: 0.95rem;
 }
 .input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+
+/* ── App shell ─────────────────────────────────────────────────────────── */
+.sidebar-link {
+  display: flex; align-items: center; gap: 10px;
+  border-radius: 8px; padding: 7px 10px; text-decoration: none; color: var(--ink-2);
+  font: inherit; font-size: 0.875rem;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.sidebar-link:hover { background: rgba(127, 127, 127, 0.12); color: var(--ink); }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 999px; padding: 5px 12px;
+  font-size: 0.82rem; font-weight: 600; cursor: pointer; border: 0; font-family: inherit;
+  color: var(--ink-2); background: transparent;
+  box-shadow: inset 0 0 0 1px var(--hairline);
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.chip:hover { color: var(--ink); }
+.chip-active { background: var(--ink); color: var(--bg); box-shadow: none; }
+.chip:disabled { opacity: 0.45; cursor: default; }
+
+.menu-pop {
+  position: absolute; z-index: 60;
+  min-width: 260px; border-radius: 14px; padding: 6px;
+  background: var(--bg-raised);
+  box-shadow: inset 0 0 0 1px var(--hairline), 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+.menu-item {
+  display: flex; width: 100%; align-items: center; gap: 8px;
+  border: 0; background: transparent; cursor: pointer; font-family: inherit;
+  border-radius: 9px; padding: 8px 10px; font-size: 0.9rem; color: var(--ink);
+  text-align: left;
+}
+.menu-item:hover { background: rgba(127, 127, 127, 0.12); }
+
+.tier-badge {
+  border-radius: 6px; padding: 1px 7px;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.02em;
+  background: rgba(127, 127, 127, 0.16); color: var(--ink-2);
+}
+.tier-badge-free { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+.tier-badge-credits { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+
+/* Draggable column sash (desktop app feel): 1:1 pointer tracking, wide hit area */
+.col-sash {
+  width: 6px; cursor: col-resize; border-radius: 3px;
+  background: transparent; border: 0; padding: 0; flex-shrink: 0;
+  transition: background-color 120ms ease;
+}
+.col-sash:hover, .col-sash[data-dragging="true"] { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 
 /* Hero: one coordinated entrance (eyebrow → h1 → sub → CTA), staggered via --i.
    Only on first paint; the rest of the page stays static. */

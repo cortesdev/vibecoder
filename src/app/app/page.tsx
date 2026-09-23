@@ -1,70 +1,71 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
-import NewProjectForm from "@/components/projects/new-project-form";
+import { getBalance, ensureWallet } from "@/lib/credits";
+import HomeComposer from "@/components/app/home-composer";
+import { FolderOpen } from "lucide-react";
 
-export default async function DashboardPage() {
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+export default async function AppHomePage() {
   const user = await currentUser();
+  const balance = user ? await ensureWallet(user.id).then(() => getBalance(user.id)) : 0;
   const projects = user
     ? await db.project.findMany({
         where: { userId: user.id },
         orderBy: { updatedAt: "desc" },
-        include: { files: { select: { id: true } } },
+        select: { id: true, name: true, updatedAt: true },
+        take: 6,
       })
     : [];
 
   return (
-    <>
-      <h1 className="text-3xl font-bold tracking-[-0.02em]">
-        {user?.name ? `Hi, ${user.name.split(" ")[0]}` : "Your projects"}
+    <main className="flex flex-1 flex-col items-center px-6 pb-16 pt-[10vh]">
+      <p className="hero-rise eyebrow" style={{ "--i": 0 } as React.CSSProperties}>
+        vibecoder
+      </p>
+      <h1
+        className="hero-rise mt-3 text-center text-[34px] font-bold tracking-[-0.02em]"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
+        {greeting()}{user?.name ? `, ${user.name.split(" ")[0]}` : ""}.
       </h1>
-      <p className="mt-2 text-sm muted">
-        Pick a project to open the agent, or start a new one.
+      <p
+        className="hero-rise muted mt-2 text-center text-[15px]"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
+        Describe something to build — the agent creates the project and starts on it right away.
       </p>
 
-      <div className="mt-8 rounded-xl p-5" style={{ background: "var(--bg-raised)", boxShadow: "inset 0 0 0 1px var(--hairline)" }}>
-        <h2 className="text-[15px] font-semibold">New project</h2>
-        <p className="mb-4 mt-1 text-sm muted">
-          Starts from a Vite + React scaffold. The agent edits files from your prompts.
-        </p>
-        <NewProjectForm />
+      <div className="hero-rise mt-8 w-full" style={{ "--i": 3 } as React.CSSProperties}>
+        <HomeComposer balance={balance} />
       </div>
 
-      <section className="mt-10" aria-label="Projects">
-        {projects.length === 0 ? (
-          <p className="muted">
-            No projects yet. Create your first one above.
-          </p>
-        ) : (
-          <ul className="grid gap-3 sm:grid-cols-2">
+      {projects.length > 0 && (
+        <section className="mt-16 w-full max-w-[720px]" aria-label="Recent projects">
+          <h2 className="text-[12px] font-semibold uppercase tracking-[0.08em]" style={{ color: "var(--ink-3)" }}>
+            Recent projects
+          </h2>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
             {projects.map((p) => (
               <li key={p.id}>
-                <Link
-                  href={`/app/projects/${p.id}`}
-                  className="block rounded-xl p-5 transition-transform"
-                  style={{ background: "var(--bg-raised)", boxShadow: "inset 0 0 0 1px var(--hairline)" }}
-                >
-                  <div className="font-semibold">{p.name}</div>
-                  <div className="mt-1 text-xs muted">
-                    {p.files.length} file{p.files.length === 1 ? "" : "s"}
-                  </div>
-                  <span className="mt-3 inline-block text-sm" style={{ color: "var(--accent)" }}>
-                    Open agent →
+                <Link href={`/app/projects/${p.id}`} className="sidebar-link !p-3" style={{ boxShadow: "inset 0 0 0 1px var(--hairline)", borderRadius: 12 }}>
+                  <FolderOpen size={15} aria-hidden="true" />
+                  <span className="truncate">{p.name}</span>
+                  <span className="ml-auto shrink-0 text-[12px]" style={{ color: "var(--ink-3)" }}>
+                    Open →
                   </span>
                 </Link>
               </li>
             ))}
           </ul>
-        )}
-      </section>
-
-      <p className="mt-12 text-sm muted">
-        Curious how it works? See the{" "}
-        <Link href="/agent" className="underline underline-offset-2 hover:opacity-70">
-          agent page
-        </Link>
-        .
-      </p>
-    </>
+        </section>
+      )}
+    </main>
   );
 }

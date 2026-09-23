@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { Terminal } from "lucide-react";
 
 export interface Platform {
   id: string;
@@ -56,14 +57,25 @@ export default function DownloadButtons({ variant = "hero" }: { variant?: "hero"
   if (variant === "hero") {
     return (
       <div className="flex flex-col items-center gap-3">
-        <a href={primary.href} className="btn btn-primary btn-lg" data-testid="primary-download">
+        <div className="flex flex-row flex-wrap items-center justify-center gap-3">
+          <a href={primary.href} className="btn btn-primary btn-lg" data-testid="primary-download">
           Download for {primary.label}
           {primary.note ? <span className="muted-3 text-sm text-black font-normal">({primary.note})</span> : null}
         </a>
-           <a href="/agent" className="btn btn-primary btn-lg" data-testid="primary-download">
-         TRY
-        
+        <a
+          href="/agent"
+          className="btn btn-lg"
+          data-testid="try-agent"
+          style={{
+            background: "transparent",
+            color: "var(--accent)",
+            boxShadow: "inset 0 0 0 3px var(--accent)",
+          }}
+        >
+          <Terminal size={18} aria-hidden="true" />
+          TRY
         </a>
+        </div>
         <p className="muted-3 text-[13px]">
           Free &amp; open source · macOS, Windows, Linux ·{" "}
           <a href="#all-downloads" className="underline hover:opacity-70" style={{ color: "var(--ink-2)" }}>

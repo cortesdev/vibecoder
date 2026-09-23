@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { makeAgent } from "./agent";
+import { runModelPrompt } from "./engine";
 import { isValidProjectPath, sanitizePath } from "./agent/paths";
 
 // Minimal Vite + React + TypeScript scaffold, scaffolded as project files.
@@ -113,7 +113,12 @@ export async function createProject(userId: string, name: string) {
   });
 }
 
-export async function runPrompt(userId: string, projectId: string, content: string) {
+export async function runPrompt(
+  userId: string,
+  projectId: string,
+  content: string,
+  modelId?: string,
+) {
   const project = await findOwnedProject(userId, projectId);
   if (!project) return { ok: false as const, error: "not_found" };
 
@@ -121,13 +126,28 @@ export async function runPrompt(userId: string, projectId: string, content: stri
   if (!trimmed) return { ok: false as const, error: "Prompt is empty." };
 
   const files = Object.fromEntries(project.files.map((f) => [f.path, f.content]));
-  const agent = makeAgent();
-  let edits;
-  try {
-    edits = await agent.run(trimmed, files);
-  } catch (err) {
-    return { ok: false as const, error: err instanceof Error ? err.message : "agent failed" };
+
+  const outcome = await runModelPrompt({
+    userId,
+    projectId,
+    modelId,
+    prompt: trimmed,
+    files,
+    run: async (agent) => {
+      let edits;
+      try {
+        edits = await agent.run(trimmed, files);
+      } catch (err) {
+        throw err instanceof Error ? err : new Error("agent failed");
+      }
+      return edits;
+    },
+  });
+
+  if (!outcome.ok || !outcome.edits) {
+    return { ok: false as const, error: outcome.error ?? "agent failed", notice: outcome.notice };
   }
+  const edits = outcome.edits;
 
   const valid = edits.filter((e) => {
     if (!isValidProjectPath(e.path)) return false;
@@ -155,7 +175,15 @@ export async function runPrompt(userId: string, projectId: string, content: stri
     include: { changes: true },
   });
 
-  return { ok: true as const, prompt };
+  return {
+    ok: true as const,
+    prompt,
+    modelId: outcome.modelId,
+    modelLabel: outcome.modelLabel,
+    usedFallback: outcome.usedFallback,
+    creditsSpent: outcome.creditsSpent,
+    notice: outcome.notice,
+  };
 }
 
 /** Apply a pending change: write `after` into the project file. */

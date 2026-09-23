@@ -10,10 +10,14 @@ export async function POST(
   if (!user) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const body = (await req.json().catch(() => null)) as { prompt?: string } | null;
+  const body = (await req.json().catch(() => null)) as {
+    prompt?: string;
+    modelId?: string;
+  } | null;
   const prompt = typeof body?.prompt === "string" ? body.prompt : "";
+  const modelId = typeof body?.modelId === "string" && body.modelId ? body.modelId : undefined;
 
-  const result = await runPrompt(user.id, id, prompt);
+  const result = await runPrompt(user.id, id, prompt, modelId);
   if (!result.ok) {
     const status = result.error === "not_found" ? 404 : 400;
     return NextResponse.json(result, { status });
