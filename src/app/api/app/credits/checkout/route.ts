@@ -54,8 +54,8 @@ export async function POST(req: Request) {
       credits: String(pack.credits),
       checkoutMode: requested,
     },
-    success_url: `${origin}/app?credits=${pack.credits}`,
-    cancel_url: `${origin}/app/settings`,
+    success_url: `${origin}/agent?credits=${pack.credits}`,
+    cancel_url: `${origin}/agent/settings`,
   });
 
   return NextResponse.json({ ok: true, url: session.url });

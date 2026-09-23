@@ -35,7 +35,7 @@ export async function GET(req: Request) {
     });
 
     const token = await createSession(user.id);
-    const res = NextResponse.redirect(new URL("/app", env.siteUrl));
+    const res = NextResponse.redirect(new URL("/agent", env.siteUrl));
     res.cookies.set(SESSION_COOKIE, token, {
       httpOnly: true,
       sameSite: "lax",

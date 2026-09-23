@@ -37,7 +37,7 @@ export default async function ProjectPage({
     <div className="flex min-w-0 flex-1 flex-col px-4 py-4">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <Link href="/app" className="text-xs muted hover:opacity-70">
+          <Link href="/agent" className="text-xs muted hover:opacity-70">
             ← All projects
           </Link>
           <h1 className="mt-0.5 truncate text-xl font-bold tracking-[-0.02em]">{project.name}</h1>

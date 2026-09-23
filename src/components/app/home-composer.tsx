@@ -63,7 +63,7 @@ export default function HomeComposer({ balance }: { balance: number }) {
       };
       if (!run.ok || !runData.ok) {
         // Project exists; land there and surface the error in the builder.
-        router.push(`/app/projects/${projectId}?error=${encodeURIComponent(runData.error ?? "agent failed")}`);
+        router.push(`/agent/projects/${projectId}?error=${encodeURIComponent(runData.error ?? "agent failed")}`);
         router.refresh();
         return;
       }
@@ -71,7 +71,7 @@ export default function HomeComposer({ balance }: { balance: number }) {
       const params = new URLSearchParams();
       if (runData.usedFallback) params.set("fallback", "1");
       if (runData.notice) params.set("notice", runData.notice);
-      router.push(`/app/projects/${projectId}${params.size ? `?${params}` : ""}`);
+      router.push(`/agent/projects/${projectId}${params.size ? `?${params}` : ""}`);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");

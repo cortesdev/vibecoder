@@ -12,7 +12,7 @@ export default function DeleteProject({ projectId }: { projectId: string }) {
     setBusy(true);
     const res = await fetch(`/api/app/projects/${projectId}`, { method: "DELETE" });
     if (res.ok) {
-      router.push("/app");
+      router.push("/agent");
       router.refresh();
     } else {
       setBusy(false);

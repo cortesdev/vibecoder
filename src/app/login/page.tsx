@@ -16,7 +16,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const user = await currentUser();
-  if (user) redirect("/app");
+  if (user) redirect("/agent");
 
   const { error } = await searchParams;
   const messages: Record<string, string> = {

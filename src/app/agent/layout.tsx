@@ -33,17 +33,19 @@ export default async function AppLayout({
         aria-label="App navigation"
       >
         <div className="flex h-14 items-center px-4">
-          <Link href="/app" className="flex items-center gap-2 text-[17px] font-bold tracking-[-0.02em]">
-            <span aria-hidden="true" className="inline-block h-[18px] w-[18px] rounded-[5px]" style={{ background: "var(--accent)" }} />
+          <Link href="/agent" className="flex items-center gap-2 text-[17px] font-bold tracking-[-0.02em]">
+            <span aria-hidden="true" className="inline-block h-[18px] w-[18px] rounded-[5px]">
+              <img src="/vibe-logo.png" alt="" className="h-full w-full" />
+            </span>
             vibecoder
           </Link>
         </div>
 
         <nav className="flex flex-col gap-0.5 px-3 text-[14px]">
-          <Link href="/app" className="sidebar-link">
+          <Link href="/agent" className="sidebar-link">
             <Plus size={16} aria-hidden="true" /> New project
           </Link>
-          <Link href="/app/settings" className="sidebar-link">
+          <Link href="/agent/settings" className="sidebar-link">
             <CreditCard size={16} aria-hidden="true" />
             Credits
             <span
@@ -72,7 +74,7 @@ export default async function AppLayout({
             <ul className="flex flex-col gap-0.5">
               {projects.map((p) => (
                 <li key={p.id}>
-                  <Link href={`/app/projects/${p.id}`} className="sidebar-link">
+                  <Link href={`/agent/projects/${p.id}`} className="sidebar-link">
                     <FolderOpen size={15} aria-hidden="true" className="shrink-0" />
                     <span className="truncate">{p.name}</span>
                   </Link>
@@ -83,7 +85,7 @@ export default async function AppLayout({
         </nav>
 
         <div className="border-t px-3 py-3" style={{ borderColor: "var(--hairline)" }}>
-          <Link href="/app/settings" className="sidebar-link">
+          <Link href="/agent/settings" className="sidebar-link">
             <Cog size={16} aria-hidden="true" /> Settings
           </Link>
           <ThemeToggle />

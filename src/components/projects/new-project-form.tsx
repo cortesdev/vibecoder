@@ -25,7 +25,7 @@ export default function NewProjectForm() {
       setBusy(false);
       return;
     }
-    router.push(`/app/projects/${data.project.id}`);
+    router.push(`/agent/projects/${data.project.id}`);
     router.refresh();
   }
 

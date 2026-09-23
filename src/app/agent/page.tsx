@@ -1,64 +1,71 @@
-import type { Metadata } from "next";
-import SiteNav from "@/components/site-nav";
 import Link from "next/link";
+import { db } from "@/lib/db";
+import { currentUser } from "@/lib/auth";
+import { getBalance, ensureWallet } from "@/lib/credits";
+import HomeComposer from "@/components/app/home-composer";
+import { FolderOpen } from "lucide-react";
 
-export const metadata: Metadata = {
-  title: "Agent",
-  description:
-    "Vibecoder Agent — sign in with Google, create a project, and let the agent write and edit your React files. Every edit is a reviewable change.",
-};
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+}
 
-export default function AgentPage() {
+export default async function AppHomePage() {
+  const user = await currentUser();
+  const balance = user ? await ensureWallet(user.id).then(() => getBalance(user.id)) : 0;
+  const projects = user
+    ? await db.project.findMany({
+        where: { userId: user.id },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true, name: true, updatedAt: true },
+        take: 6,
+      })
+    : [];
+
   return (
-    <>
-      <SiteNav />
-      <main id="main" className="mx-auto w-full max-w-[1100px] px-6 pb-24">
-        <section className="pt-20 pb-14 text-center">
-          <p className="eyebrow">vibecoder agent</p>
-          <h1 className="display mt-3">
-            Your ideas, as React apps.
-          </h1>
-          <p className="mx-auto mt-5 max-w-xl text-lg muted">
-            Sign in with Google, create a project, and let the agent generate and
-            edit your React files. Every change shows up as a diff you can apply
-            or revert — nothing lands behind your back.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/app" className="btn btn-primary btn-lg">
-              Open your projects
-            </Link>
-            <Link href="/login" className="btn btn-secondary btn-lg">
-              Sign in with Google
-            </Link>
-          </div>
-        </section>
+    <main className="flex flex-1 flex-col items-center px-6 pb-16 pt-[10vh]">
+      <p className="hero-rise eyebrow" style={{ "--i": 0 } as React.CSSProperties}>
+        vibecoder
+      </p>
+      <h1
+        className="hero-rise mt-3 text-center text-[34px] font-bold tracking-[-0.02em]"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
+        {greeting()}{user?.name ? `, ${user.name.split(" ")[0]}` : ""}.
+      </h1>
+      <p
+        className="hero-rise muted mt-2 text-center text-[15px]"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
+        Describe something to build — the agent creates the project and starts on it right away.
+      </p>
 
-        <section className="grid gap-4 md:grid-cols-3" aria-label="Agent features">
-          {[
-            {
-              title: "Project folders",
-              body: "Create a named project and it starts from a clean Vite React scaffold — the files live in your account, ready to edit.",
-            },
-            {
-              title: "Chat that edits",
-              body: "Tell the agent what to build. It answers with concrete file edits, not just advice.",
-            },
-            {
-              title: "Review before apply",
-              body: "Every edit is proposed as a diff. Apply the ones you want, revert the ones you don't — one click each.",
-            },
-          ].map((f) => (
-            <article key={f.title} className="card p-6">
-              <h2 className="text-[15px] font-semibold">{f.title}</h2>
-              <p className="mt-2 text-sm muted">{f.body}</p>
-            </article>
-          ))}
-        </section>
+      <div className="hero-rise mt-8 w-full" style={{ "--i": 3 } as React.CSSProperties}>
+        <HomeComposer balance={balance} />
+      </div>
 
-        <p className="mt-12 text-center text-xs muted-3">
-          The Vibecoder agent is free while it is in preview.
-        </p>
-      </main>
-    </>
+      {projects.length > 0 && (
+        <section className="mt-16 w-full max-w-[720px]" aria-label="Recent projects">
+          <h2 className="text-[12px] font-semibold uppercase tracking-[0.08em]" style={{ color: "var(--ink-3)" }}>
+            Recent projects
+          </h2>
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {projects.map((p) => (
+              <li key={p.id}>
+                <Link href={`/agent/projects/${p.id}`} className="sidebar-link !p-3" style={{ boxShadow: "inset 0 0 0 1px var(--hairline)", borderRadius: 12 }}>
+                  <FolderOpen size={15} aria-hidden="true" />
+                  <span className="truncate">{p.name}</span>
+                  <span className="ml-auto shrink-0 text-[12px]" style={{ color: "var(--ink-3)" }}>
+                    Open →
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </main>
   );
 }
