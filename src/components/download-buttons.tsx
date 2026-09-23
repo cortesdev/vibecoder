@@ -84,7 +84,7 @@ export default function DownloadButtons({ variant = "hero" }: { variant?: "hero"
             }}
           >
             <Terminal size={18} aria-hidden="true" />
-            TRY
+            START CODING
           </a>
         </div>
         <p className="muted-3 text-[13px]">

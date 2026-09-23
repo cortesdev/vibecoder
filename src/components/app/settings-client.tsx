@@ -3,9 +3,18 @@
 import { useState } from "react";
 import { Check, KeyRound, Trash2, Wallet } from "lucide-react";
 
+// Every provider a user can bring a key for, in the order they should try
+// them. The two $0 tiers come first because they are what makes the first
+// prompt answer without paying anything. OpenCode Zen is listed last on
+// purpose: its free tier is gated to the OpenCode app itself, so a Zen key
+// only ever buys its *paid* models — promising free Zen models here is what
+// sent users into an unexplainable 403.
 const KEY_PROVIDERS = [
-  { id: "opencode", label: "OpenCode Zen", hint: "Free key at opencode.ai — unlocks Big Pickle, Grok Code." },
-  { id: "zai", label: "Z.ai", hint: "Free key at z.ai — unlocks GLM Flash." },
+  { id: "zai", label: "Z.ai", hint: "Free key at z.ai — GLM Flash runs at $0. This is the default free model." },
+  { id: "google", label: "Google AI Studio", hint: "Free key at aistudio.google.com — Gemini Flash on Google's free tier (daily quota)." },
+  { id: "opencode", label: "OpenCode Zen", hint: "Key from opencode.ai — paid Zen models only; Zen's free tier works only inside the OpenCode app." },
+  { id: "anthropic", label: "Anthropic", hint: "Optional: your own Claude key, billed by Anthropic instead of from credits." },
+  { id: "openai", label: "OpenAI", hint: "Optional: your own OpenAI key, billed by OpenAI instead of from credits." },
 ] as const;
 
 interface Pack {
