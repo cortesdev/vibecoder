@@ -18,20 +18,50 @@ export interface ChangeDto {
   createdAt: string;
 }
 
-function changeDiff(c: ChangeDto): string {
-  return createTwoFilesPatch(`a/${c.path}`, `b/${c.path}`, c.before, c.after, "", "", {
+function changeDiff(c: ChangeDto): string[] {
+  const patch = createTwoFilesPatch(`a/${c.path}`, `b/${c.path}`, c.before, c.after, "", "", {
     context: 3,
   });
+  return patch.split("\n").filter((l) => !l.startsWith("***") && !l.startsWith("==="));
 }
+
+/** Colored diff: green additions, red deletions, dim context. */
+function DiffLines({ c }: { c: ChangeDto }) {
+  return (
+    <pre
+      className="mono mt-2 max-h-56 overflow-auto rounded-lg p-2 text-[12px] leading-[1.6]"
+      style={{ background: "var(--bg-inset)" }}
+    >
+      {changeDiff(c).map((line, i) => {
+        const color = line.startsWith("+")
+          ? "var(--good)"
+          : line.startsWith("-")
+            ? "var(--accent)"
+            : line.startsWith("@@")
+              ? "var(--ink-3)"
+              : "var(--ink-2)";
+        return (
+          <span key={i} style={{ color, whiteSpace: "pre-wrap", display: "block" }}>
+            {line || " "}
+          </span>
+        );
+      })}
+    </pre>
+  );
+}
+
+const STATUS_COLOR: Record<ChangeDto["status"], string> = {
+  pending: "var(--accent)",
+  applied: "var(--good)",
+  reverted: "var(--ink-3)",
+};
 
 export default function ProjectBuilder({
   projectId,
-  projectName,
   initialFiles,
   initialChanges,
 }: {
   projectId: string;
-  projectName: string;
   initialFiles: ProjectFileDto[];
   initialChanges: ChangeDto[];
 }) {
@@ -57,11 +87,14 @@ export default function ProjectBuilder({
     if (!selected || busy) return;
     setBusy(true);
     setStatus("");
-    const res = await fetch(`/api/app/projects/${projectId}/files/${encodeURIComponent(selected).replace(/%2F/g, "/")}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
+    const res = await fetch(
+      `/api/app/projects/${projectId}/files/${encodeURIComponent(selected).replace(/%2F/g, "/")}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ content }),
+      },
+    );
     setBusy(false);
     if (res.ok) {
       setFiles((prev) => prev.map((f) => (f.path === selected ? { ...f, content } : f)));
@@ -119,110 +152,155 @@ export default function ProjectBuilder({
   }
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", minHeight: "calc(100dvh - 140px)" }}>
-      {/* Sidebar: file tree */}
-      <aside aria-label="Project files" className="border-r p-3" style={{ borderColor: "var(--hairline)" }}>
-        <h2 className="px-1 text-xs font-semibold uppercase tracking-wide muted">{projectName}</h2>
-        <ul className="mt-3 space-y-0.5">
-          {files.map((f) => (
-            <li key={f.path}>
-              <button
-                type="button"
-                onClick={() => pick(f.path)}
-                className="mono w-full truncate rounded-md px-2 py-1 text-left text-[13px] hover:bg-white/5"
-                aria-current={f.path === selected ? "true" : undefined}
-                style={
-                  f.path === selected
-                    ? { background: "rgba(232,72,63,0.12)", color: "var(--accent)" }
-                    : undefined
-                }
-              >
-                {f.path}
-              </button>
-            </li>
-          ))}
-        </ul>
+    <div
+      className="grid gap-3 lg:h-[calc(100dvh-150px)] lg:grid-cols-[190px_minmax(0,1fr)_400px]"
+      aria-label="Project builder"
+    >
+      {/* ── Files ─────────────────────────────────────────────────────── */}
+      <aside
+        aria-label="Project files"
+        className="card flex flex-row gap-1 overflow-x-auto p-2 lg:flex-col lg:overflow-y-auto"
+      >
+        <h2 className="sr-only">Files</h2>
+        {files.map((f) => (
+          <button
+            key={f.path}
+            type="button"
+            onClick={() => pick(f.path)}
+            className="mono shrink-0 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-white/5 lg:w-full lg:shrink"
+            aria-current={f.path === selected ? "true" : undefined}
+            style={
+              f.path === selected
+                ? { background: "rgba(232,72,63,0.14)", color: "var(--accent)" }
+                : { color: "var(--ink-2)" }
+            }
+          >
+            {f.path}
+          </button>
+        ))}
       </aside>
 
-      {/* Main: editor + agent column */}
-      <section className="flex min-h-0 flex-col">
-        <div className="flex items-center justify-between gap-3 border-b px-4 py-2" style={{ borderColor: "var(--hairline)" }}>
-          <span className="mono text-[13px] muted">{selected || "select a file"}</span>
-          <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={!selected || busy}>
+      {/* ── Editor ────────────────────────────────────────────────────── */}
+      <section className="card flex min-h-0 flex-col overflow-hidden" aria-label="Editor">
+        <div
+          className="flex shrink-0 items-center justify-between gap-3 px-4 py-2.5"
+          style={{ borderBottom: "1px solid var(--hairline)" }}
+        >
+          <span className="mono truncate text-[12.5px]" style={{ color: "var(--ink-2)" }}>
+            {selected || "select a file"}
+          </span>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={save}
+            disabled={!selected || busy}
+          >
             Save
           </button>
         </div>
-
-        <div className="min-h-[320px] flex-1 p-1">
+        <div className="min-h-[420px] flex-1 lg:min-h-0">
           {selected ? (
             <FileEditor path={selected} value={content} onChange={setContent} />
           ) : (
-            <p className="muted p-4">Select a file to edit it.</p>
+            <p className="muted p-4 text-sm">Select a file to edit it.</p>
           )}
         </div>
+      </section>
 
-        <div className="border-t p-4" style={{ borderColor: "var(--hairline)" }}>
-          <form onSubmit={runAgent} className="flex gap-2">
-            <label htmlFor="prompt" className="sr-only">
-              Tell the agent what to build
-            </label>
-            <textarea
-              id="prompt"
-              className="input min-h-[64px] flex-1 resize-y"
-              placeholder="Tell the agent what to build, e.g. add a sign-up button with dark styling…"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-            />
-            <button type="submit" className="btn btn-secondary" disabled={busy}>
+      {/* ── Agent chat ────────────────────────────────────────────────── */}
+      <aside
+        className="card flex min-h-0 flex-col overflow-hidden"
+        aria-label="Agent"
+      >
+        <div
+          className="flex shrink-0 items-center justify-between px-4 py-2.5"
+          style={{ borderBottom: "1px solid var(--hairline)" }}
+        >
+          <h2 className="text-[13px] font-semibold">Agent</h2>
+          <span className="text-[12px]" style={{ color: busy ? "var(--accent)" : "var(--ink-3)" }} role="status">
+            {busy ? "working…" : "idle"}
+          </span>
+        </div>
+
+        {/* Conversation: the agent's proposed changes, newest intent first */}
+        <div className="flex-1 space-y-2.5 overflow-y-auto p-3" aria-live="polite">
+          {status && (
+            <p className="rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--bg-inset)", color: "var(--ink-2)" }}>
+              {status}
+            </p>
+          )}
+
+          {changes.length === 0 && !status && (
+            <div className="px-1 pt-6 text-center">
+              <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+                Describe what you want below. The agent proposes file changes here — you apply or revert each one.
+              </p>
+            </div>
+          )}
+
+          {changes.map((c) => (
+            <div key={c.id} className="rounded-xl p-3" style={{ background: "var(--bg-inset)" }}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="mono truncate text-[12.5px]">{c.path}</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: STATUS_COLOR[c.status] }}>
+                  {c.status}
+                </span>
+              </div>
+              <div className="mt-2 flex gap-2">
+                {c.status === "pending" && (
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => act(c, "apply")} disabled={busy}>
+                    Apply
+                  </button>
+                )}
+                {c.status === "applied" && (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(c, "revert")} disabled={busy}>
+                    Revert
+                  </button>
+                )}
+                {c.status === "reverted" && (
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(c, "apply")} disabled={busy}>
+                    Re-apply
+                  </button>
+                )}
+              </div>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-[12px] hover:opacity-70" style={{ color: "var(--ink-3)" }}>
+                  Diff
+                </summary>
+                <DiffLines c={c} />
+              </details>
+            </div>
+          ))}
+        </div>
+
+        {/* Prompt: pinned to the bottom, chat-style */}
+        <form onSubmit={runAgent} className="shrink-0 p-3 pt-0" style={{ borderTop: "1px solid var(--hairline)" }}>
+          <label htmlFor="prompt" className="sr-only">
+            Tell the agent what to build
+          </label>
+          <textarea
+            id="prompt"
+            className="input min-h-[60px] w-full resize-none text-[14px]"
+            placeholder="Tell the agent what to build…"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                (e.currentTarget.form as HTMLFormElement).requestSubmit();
+              }
+            }}
+          />
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
+              ⌘↩ to send
+            </span>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !prompt.trim()}>
               {busy ? "Working…" : "Run agent"}
             </button>
-          </form>
-
-          <p aria-live="polite" className="mt-2 text-sm muted">
-            {status || "\u00A0"}
-          </p>
-
-          <div className="mt-3 border-t pt-3" style={{ borderColor: "var(--hairline)" }}>
-            <h3 className="text-xs font-semibold uppercase tracking-wide muted">Proposed changes</h3>
-            <ul className="mt-2 space-y-2">
-              {changes.length === 0 && <li className="text-sm muted">No changes yet.</li>}
-              {changes.map((c) => (
-                <li key={c.id} className="card p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="mono text-[13px]">{c.path}</span>
-                    <span className="badge" style={{ color: c.status === "applied" ? "var(--good)" : c.status === "reverted" ? "var(--ink-3)" : "var(--accent)" }}>
-                      {c.status}
-                    </span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {c.status === "pending" && (
-                      <button type="button" className="btn btn-primary btn-sm" onClick={() => act(c, "apply")} disabled={busy}>
-                        Apply
-                      </button>
-                    )}
-                    {c.status === "applied" && (
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(c, "revert")} disabled={busy}>
-                        Revert
-                      </button>
-                    )}
-                    {c.status === "reverted" && (
-                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => act(c, "apply")} disabled={busy}>
-                        Re-apply
-                      </button>
-                    )}
-                  </div>
-                  <details className="mt-2">
-                    <summary className="cursor-pointer text-xs muted hover:opacity-70">Show diff</summary>
-                    <pre className="mono mt-2 max-h-64 overflow-auto rounded-lg p-2 text-[12px]" style={{ background: "var(--bg-inset)" }}>
-                      {changeDiff(c)}
-                    </pre>
-                  </details>
-                </li>
-              ))}
-            </ul>
           </div>
-        </div>
-      </section>
+        </form>
+      </aside>
     </div>
   );
 }

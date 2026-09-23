@@ -31,7 +31,6 @@ export default async function ProjectPage({
 
       <ProjectBuilder
         projectId={project.id}
-        projectName={project.name}
         initialFiles={project.files.map((f) => ({ path: f.path, content: f.content }))}
         initialChanges={project.changes.map((c) => ({
           id: c.id,

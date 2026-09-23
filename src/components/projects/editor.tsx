@@ -24,11 +24,7 @@ function languageFor(path: string): string {
   return LANG_BY_EXT[ext] ?? "plaintext";
 }
 
-export default function FileEditor({
-  path,
-  value,
-  onChange,
-}: {
+export default function FileEditor({ path, value, onChange }: {
   path: string;
   value: string;
   onChange: (value: string) => void;
@@ -39,12 +35,17 @@ export default function FileEditor({
       language={languageFor(path)}
       value={value}
       onChange={(v) => onChange(v ?? "")}
+      theme="vs-dark"
       options={{
         fontSize: 13.5,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         tabSize: 2,
         fontFamily: "ui-monospace, SF Mono, Menlo, monospace",
+        automaticLayout: true,
+        renderLineHighlight: "none",
+        overviewRulerLanes: 0,
+        padding: { top: 12 },
       }}
     />
   );
