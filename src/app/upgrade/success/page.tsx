@@ -6,6 +6,8 @@ import SiteNav from "@/components/site-nav";
 
 export const metadata = { robots: { index: false } };
 
+
+
 export default async function UpgradeSuccessPage({
   searchParams,
 }: {
@@ -131,6 +133,7 @@ export default async function UpgradeSuccessPage({
           Questions or a refund? One email: hello@vibecoder.io. 30 days, no
           questions asked.
         </p>
+    
       </main>
     </>
   );

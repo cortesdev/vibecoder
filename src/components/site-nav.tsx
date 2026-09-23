@@ -15,6 +15,9 @@ export default function SiteNav() {
           <a href="#faq" className="hover:opacity-70">
             Docs
           </a>
+              <a href="/agent" className="hover:opacity-70">
+            Agent
+          </a>
           <a href="#download" className="btn btn-primary btn-sm">
             Download
           </a>
