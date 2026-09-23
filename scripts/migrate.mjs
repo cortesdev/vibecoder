@@ -35,6 +35,15 @@ function connection() {
 
 const migrationsDir = path.join(process.cwd(), "prisma", "migrations");
 
+function objectNames(sql) {
+  const names = [];
+  const re =
+    /CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?([A-Za-z_][A-Za-z0-9_]*)["`]?/gi;
+  let m;
+  while ((m = re.exec(sql))) names.push(m[1]);
+  return names;
+}
+
 async function probeTurso(conn) {
   if (!conn.authToken) return;
   const endpoint = `${conn.url.replace(/^libsql:/, "https:")}/v2/pipeline`;
@@ -52,12 +61,18 @@ async function probeTurso(conn) {
 async function main() {
   const conn = connection();
 
-  if (!conn.url || conn.url.startsWith("file:")) {
+  if (!conn.url) {
+    console.log("migrate: no remote database configured, skipping");
+    return;
+  }
+  if (conn.url.startsWith("file:") && process.env.MIGRATE_ALLOW_FILE !== "1") {
     console.log("migrate: no remote database configured, skipping");
     return;
   }
 
-  console.log(`migrate: applying migrations to ${new URL(conn.url).host || conn.url}`);
+  console.log(
+    `migrate: applying migrations to ${conn.url.startsWith("file:") ? conn.url : new URL(conn.url).host || conn.url}`,
+  );
   const client = createClient(conn);
 
   await client.executeMultiple(`
@@ -75,6 +90,42 @@ async function main() {
 
   const appliedRes = await client.execute('SELECT "migration_name" FROM "_prisma_migrations"');
   const applied = new Set(appliedRes.rows.map((r) => r.migration_name));
+
+  if (!applied.has("init")) {
+    const existingRes = await client.execute(
+      `SELECT "name" FROM "sqlite_master" WHERE "type" IN ('table','index')`,
+    );
+    const existing = new Set(existingRes.rows.map((r) => r.name));
+    const folders = readdirSync(migrationsDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .filter((name) => name !== "migration_lock.toml")
+      .sort();
+
+    // Adopt migrations whose objects already exist in the DB (e.g. set up via
+    // `prisma db push` instead of `migrate`) so we only run what's actually new.
+    const adoptable = new Set();
+    for (const name of folders) {
+      if (applied.has(name)) continue;
+      const sql = readFileSync(path.join(migrationsDir, name, "migration.sql"), "utf8");
+      const objs = objectNames(sql);
+      if (objs.length > 0 && objs.every((o) => existing.has(o))) adoptable.add(name);
+    }
+    for (const name of folders) {
+      if (!adoptable.has(name)) continue;
+      const sql = readFileSync(path.join(migrationsDir, name, "migration.sql"), "utf8");
+      const checksum = createHash("sha256").update(sql).digest("hex");
+      const now = new Date().toISOString();
+      console.log(`migrate: reconciling (already present) ${name}`);
+      await client.execute(
+        `INSERT INTO "_prisma_migrations"
+          ("id", "checksum", "finished_at", "migration_name", "started_at", "applied_steps_count", "logs")
+         VALUES (?, ?, ?, ?, ?, 0, ?)`,
+        [randomUUID(), checksum, now, name, now, "reconciled: objects already present"],
+      );
+      applied.add(name);
+    }
+  }
 
   const folders = readdirSync(migrationsDir, { withFileTypes: true })
     .filter((d) => d.isDirectory())
