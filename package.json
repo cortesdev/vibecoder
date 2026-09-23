@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "turso:set-env": "echo ok"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

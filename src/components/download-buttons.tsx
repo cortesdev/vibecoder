@@ -60,6 +60,10 @@ export default function DownloadButtons({ variant = "hero" }: { variant?: "hero"
           Download for {primary.label}
           {primary.note ? <span className="muted-3 text-sm text-black font-normal">({primary.note})</span> : null}
         </a>
+           <a href="/agent" className="btn btn-primary btn-lg" data-testid="primary-download">
+         TRY
+        
+        </a>
         <p className="muted-3 text-[13px]">
           Free &amp; open source · macOS, Windows, Linux ·{" "}
           <a href="#all-downloads" className="underline hover:opacity-70" style={{ color: "var(--ink-2)" }}>
