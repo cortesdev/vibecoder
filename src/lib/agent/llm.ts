@@ -14,6 +14,13 @@ export interface LlmConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
+  /** Human name of the provider ("Z.ai"), so failures can name who refused. */
+  providerLabel?: string;
+  /** Env vars the platform can hold this provider's key in — quoted back to the
+   *  operator in errors, because "key missing" is useless without a variable name. */
+  keyEnv?: string[];
+  /** Registry id ("glm-flash"), so a rejected model id can be re-pointed. */
+  modelId?: string;
 }
 
 export function llmConfigFromEnv(env: Record<string, string | undefined> = process.env): LlmConfig | null {
@@ -26,22 +33,26 @@ export function llmConfigFromEnv(env: Record<string, string | undefined> = proce
   };
 }
 
-// A bare "responded 403" hides the only useful part of the answer. Providers
-// explain themselves in the body, and the same status means very different
-// things (bad key vs no funds vs "not allowed outside our app"), so surface it.
-const STATUS_HINT: Record<number, string> = {
-  401: "the provider rejected this API key",
-  402: "the provider account is out of funds",
-  403: "the provider refused this request — often a key or model that is not allowed outside the vendor's own app",
-  404: "the provider does not know this model — check the model id",
-  429: "rate limited by the provider — try again in a moment",
-};
+// A bare "responded 403" names neither who refused nor what to do about it.
+// Providers explain themselves in the body, and the same status means very
+// different things (bad key vs no funds vs a model that is not allowed outside
+// the vendor's own app), so the error has to carry the status, the provider's
+// own words, and the one action that fixes it.
+const SETTINGS_HINT = "Settings → API keys";
+
+function envNameFor(modelId: string | undefined): string {
+  const suffix = (modelId ?? "MODEL").toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  return `VIBECODER_MODEL_${suffix}`;
+}
 
 function providerErrorText(body: string): string {
   const trimmed = body.trim();
   if (!trimmed) return "";
   try {
-    const parsed = JSON.parse(trimmed) as { error?: { message?: string } | string; message?: string };
+    const parsed = JSON.parse(trimmed) as {
+      error?: { message?: string } | string;
+      message?: string;
+    };
     const nested = parsed.error;
     const message = typeof nested === "string" ? nested : nested?.message ?? parsed.message;
     if (message) return message;
@@ -51,7 +62,26 @@ function providerErrorText(body: string): string {
   return trimmed.replace(/\s+/g, " ").slice(0, 200);
 }
 
-async function httpError(res: Response): Promise<Error> {
+/** The one thing the reader can do about this status. */
+export function fixHintFor(status: number, config: Pick<LlmConfig, "providerLabel" | "keyEnv" | "modelId" | "baseUrl">): string {
+  const who = config.providerLabel ?? "the provider";
+  const env = config.keyEnv?.length ? config.keyEnv.join(" or ") : "the provider's API key variable";
+  if (status === 400 || status === 401 || status === 403) {
+    return `${who} did not accept the key. Add a working ${who} key in ${SETTINGS_HINT}, or set ${env} in the environment.`;
+  }
+  if (status === 402) {
+    return `${who} says the account has no funds. ${who}'s free models cost nothing — this request went to a paid model, or the key belongs to an unfunded account.`;
+  }
+  if (status === 404) {
+    return `${who} does not serve this model id. Set ${envNameFor(config.modelId)} to the id from ${who}'s console — no deploy needed.`;
+  }
+  if (status === 429) {
+    return `${who} is rate limiting this key or its free quota is spent — wait a moment and retry.`;
+  }
+  return `Check the ${who} key in ${SETTINGS_HINT} (or ${env}) and that ${config.baseUrl} is reachable.`;
+}
+
+async function httpError(res: Response, config: LlmConfig): Promise<Error> {
   let body = "";
   try {
     body = await res.text();
@@ -59,9 +89,10 @@ async function httpError(res: Response): Promise<Error> {
     body = "";
   }
   const detail = providerErrorText(body);
-  const hint = STATUS_HINT[res.status];
+  const who = config.providerLabel ?? "the provider";
+  const what = config.modelId ? `the "${config.modelId}" model` : "this model";
   return new Error(
-    `agent API responded ${res.status}${detail ? `: ${detail}` : ""}${hint ? ` (${hint})` : ""}`,
+    `${who} refused ${what} — HTTP ${res.status}${detail ? `, provider said: "${detail}"` : ""}. ${fixHintFor(res.status, config)}`,
   );
 }
 
@@ -115,7 +146,7 @@ export class LlmAgent implements Agent {
         ],
       }),
     });
-    if (!res.ok) throw await httpError(res);
+    if (!res.ok) throw await httpError(res, this.config);
 
     const data = (await res.json()) as {
       choices?: { message?: { content?: string } }[];

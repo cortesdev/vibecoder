@@ -1,5 +1,12 @@
 import { db } from "./db";
-import { getModel, freeModels, DEFAULT_MODEL_ID, FREE_FALLBACK_ID, type ModelDef } from "./models";
+import {
+  getModel,
+  freeModels,
+  DEFAULT_MODEL_ID,
+  FREE_FALLBACK_ID,
+  PROVIDER_META,
+  type ModelDef,
+} from "./models";
 import { debitForRun, refundRun } from "./credits";
 import { FREE_TOKENS_PER_CREDIT, ensureFreeWallet, spendFreeTokens } from "./freewallet";
 import { LlmAgent, type LlmConfig } from "./agent/llm";
@@ -35,6 +42,28 @@ function modelStringFor(m: ModelDef): string {
   return process.env[name]?.trim() || m.model;
 }
 
+/** VIBECODER_BASE_URL_<PROVIDER> points a provider somewhere else — a corporate
+ *  gateway, a metering proxy, or the local OpenAI-compatible stub the end-to-end
+ *  test drives — without editing code. Same for every base URL below. */
+function baseUrlFor(provider: string): string | undefined {
+  const override = process.env[`VIBECODER_BASE_URL_${provider.toUpperCase()}`]?.trim();
+  return override || PROVIDER_BASE_URL[provider];
+}
+
+/** Everything the error path needs to name the provider and the fix. */
+function agentMeta(m: ModelDef) {
+  return {
+    providerLabel: PROVIDER_META[m.provider].label,
+    keyEnv: PLATFORM_KEY_ENV[m.provider],
+    modelId: m.id,
+  };
+}
+
+/** "ZAI_API_KEY or VIBECODER_ZAI_API_KEY" — the names an operator can set. */
+function keyEnvNames(m: ModelDef): string {
+  return (PLATFORM_KEY_ENV[m.provider] ?? []).join(" or ");
+}
+
 export interface RunOutcome {
   ok: boolean;
   error?: string;
@@ -59,13 +88,16 @@ async function keyFor(userId: string, provider: string): Promise<string | null> 
 }
 
 function platformConfig(m: ModelDef): LlmConfig | null {
-  const baseUrl = PROVIDER_BASE_URL[m.provider];
+  const baseUrl = baseUrlFor(m.provider);
   if (!baseUrl) return null;
+  // Blank or whitespace-only counts as unset: Vercel hands empty strings to the
+  // build when a variable exists without a value, and that must not read as
+  // "configured" — it produces a 401 nobody can explain from the UI.
   const apiKey = (PLATFORM_KEY_ENV[m.provider] ?? [])
     .map((name) => process.env[name]?.trim())
     .find(Boolean);
   if (!apiKey) return null;
-  return { apiKey, baseUrl, model: modelStringFor(m) };
+  return { apiKey, baseUrl, model: modelStringFor(m), ...agentMeta(m) };
 }
 
 async function resolveAgent(
@@ -74,13 +106,15 @@ async function resolveAgent(
 ): Promise<{ agent: Agent | null; problem?: string }> {
   // 1. The user's own BYO key wins when they've added one.
   if (model.byok) {
-    const key = await keyFor(userId, model.provider);
-    if (key) {
+    const key = (await keyFor(userId, model.provider))?.trim();
+    const baseUrl = baseUrlFor(model.provider);
+    if (key && baseUrl) {
       return {
         agent: new LlmAgent({
           apiKey: key,
-          baseUrl: PROVIDER_BASE_URL[model.provider],
+          baseUrl,
           model: modelStringFor(model),
+          ...agentMeta(model),
         }),
       };
     }
@@ -92,10 +126,12 @@ async function resolveAgent(
   if (cfg) return { agent: new LlmAgent(cfg) };
 
   if (model.byok || model.tier === "free") {
-    const envNames = (PLATFORM_KEY_ENV[model.provider] ?? []).join(" or ");
+    const who = PROVIDER_META[model.provider].label;
     return {
       agent: null,
-      problem: `${model.label} has no key yet — add your own ${model.provider} key in Settings, or set ${envNames} on the server.`,
+      problem: `${model.label} needs a ${who} API key: add one in Settings → API keys, or set ${keyEnvNames(
+        model,
+      )} in the environment. An empty value counts as unset.`,
     };
   }
 
@@ -121,12 +157,15 @@ async function resolveFreeAgent(
     if (agent) return { agent, model: candidate };
     withoutKeys.push(candidate.label);
   }
+  const needs = chain
+    .map((m) => `${m.label} → ${PROVIDER_META[m.provider].label} key in Settings → API keys, or set ${keyEnvNames(m)}`)
+    .join("; ");
   return {
     agent: null,
     model: requested,
-    problem: `No free model has a key right now (${withoutKeys.join(
+    problem: `No free model is configured yet (tried ${withoutKeys.join(
       ", ",
-    )}). Add a free Z.ai or Gemini key in Settings — or set ZAI_API_KEY / GEMINI_API_KEY on the server — and the free models work immediately.`,
+    )}). ${needs}. Both providers have a $0 tier — a free Z.ai key from z.ai or a Google AI Studio key is enough, and no paid plan is involved.`,
   };
 }
 
