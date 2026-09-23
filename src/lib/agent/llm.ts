@@ -16,7 +16,7 @@ export interface LlmConfig {
   model: string;
 }
 
-export function llmConfigFromEnv(env: NodeJS.ProcessEnv = process.env): LlmConfig | null {
+export function llmConfigFromEnv(env: Record<string, string | undefined> = process.env): LlmConfig | null {
   const apiKey = env.AGENT_API_KEY;
   if (!apiKey) return null;
   return {
