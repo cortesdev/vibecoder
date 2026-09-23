@@ -38,7 +38,7 @@ export default async function ProjectPage({
     : undefined;
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col px-4 py-4">
+    <div className="flex min-w-0 flex-1 flex-col px-4 py-4 max-h-[750px]">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <Link href="/agent" className="text-xs muted hover:opacity-70">
