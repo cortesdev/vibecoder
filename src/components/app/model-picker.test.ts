@@ -96,7 +96,50 @@ describe("model picker readiness", () => {
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     expect(within(screen.getByRole("listbox")).queryByText("ready")).toBeNull();
 
-    fireEvent.click(screen.getByText("Gemini Flash"));
+    fireEvent.click(within(screen.getByRole("listbox")).getByRole("option", { name: /Gemini Flash/ }));
     expect(onChange).toHaveBeenCalledWith("gemini-flash");
+  });
+
+  it("grays out a free model that cannot answer, and disables picking it", () => {
+    mount([
+      state({ modelId: "gemini-flash", status: "live" }),
+      state({
+        modelId: "groq-gpt-oss",
+        provider: "groq",
+        providerLabel: "Groq",
+        label: "GPT-OSS 120B",
+        model: "openai/gpt-oss-120b",
+        status: "no_key",
+        message: "GPT-OSS 120B needs a Groq API key: add one in Settings.",
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    const menu = within(screen.getByRole("listbox"));
+
+    const dead = menu.getByRole("option", { name: /GPT-OSS 120B/ });
+    expect(dead.getAttribute("disabled")).not.toBeNull();
+    expect(menu.getByText("needs key")).toBeTruthy();
+
+    const alive = menu.getByRole("option", { name: /Gemini Flash/ });
+    expect(alive.getAttribute("disabled")).toBeNull();
+    expect(menu.getByText("Free — ready now (Gemini Flash)")).toBeTruthy();
+  });
+
+  it("shows a renewal countdown on a rate-limited model instead of picking it", () => {
+    mount([
+      state({
+        modelId: "gemini-flash",
+        status: "rate_limited",
+        message: 'Google refused the "gemini-flash" model — HTTP 429, provider said: "quota exceeded".',
+      }),
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    const menu = within(screen.getByRole("listbox"));
+
+    const row = menu.getByRole("option", { name: /Gemini Flash/ });
+    expect(row.getAttribute("disabled")).not.toBeNull();
+    expect(menu.getByText(/retry in \d+s/)).toBeTruthy();
   });
 });
