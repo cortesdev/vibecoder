@@ -25,6 +25,7 @@ const PROVIDER_BASE_URL: Record<string, string> = {
   openai: "https://api.openai.com/v1",
   groq: "https://api.groq.com/openai/v1",
   openrouter: "https://openrouter.ai/api/v1",
+  nvidia: "https://integrate.api.nvidia.com/v1",
 };
 
 // Env vars that can serve a provider, most specific first. The VIBECODER_ name
@@ -39,6 +40,7 @@ const PLATFORM_KEY_ENV: Record<string, string[]> = {
   google: ["VIBECODER_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"],
   groq: ["VIBECODER_GROQ_API_KEY", "GROQ_KEY", "GROQ_API_KEY"],
   openrouter: ["VIBECODER_OPENROUTER_API_KEY", "OPENROUTER_KEY", "OPENROUTER_API_KEY"],
+  nvidia: ["VIBECODER_NVIDIA_API_KEY", "NVIDIA_API_KEY", "NVIDIA_NIM_API_KEY"],
 };
 
 /** VIBECODER_MODEL_<MODEL_ID> overrides a model's provider string, so a

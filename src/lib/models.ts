@@ -4,7 +4,7 @@
 // free to run — the user pays the provider directly.
 
 export type Tier = "free" | "credits";
-export type ProviderId = "vibecoder" | "opencode" | "google" | "groq" | "openrouter" | "anthropic" | "openai";
+export type ProviderId = "vibecoder" | "opencode" | "google" | "groq" | "openrouter" | "nvidia" | "anthropic" | "openai";
 
 
 
@@ -59,6 +59,19 @@ export const MODELS: ModelDef[] = [
     byok: true,
     contextLimit: 200000,
     note: "OpenRouter's free route — 50 requests/day per key, shared by every user of that key.",
+  },
+  {
+    id: "nemotron",
+    label: "Nemotron (NVIDIA)",
+    provider: "nvidia",
+    tier: "free",
+    cost: 0,
+    // NVIDIA NIM trial endpoint: free OpenAI-compatible API at build.nvidia.com.
+    // Key is free; limits are per-account trial terms.
+    model: "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    byok: true,
+    contextLimit: 128000,
+    note: "Free via NVIDIA NIM (build.nvidia.com), subject to NVIDIA trial limits.",
   },
 {
     id: "gemini-flash",
@@ -155,7 +168,7 @@ export const DEFAULT_MODEL_ID = "openrouter-free";
  * a wait only after the healthy providers have both refused. OpenRouter sits in
  * the middle and is capped at 50 free requests/day per key.
  */
-const FREE_PREFERENCE = ["openrouter-free", "groq-gpt-oss", "gemini-flash"];
+const FREE_PREFERENCE = ["openrouter-free", "groq-gpt-oss", "nemotron", "gemini-flash"];
 
 export function freeModels(): ModelDef[] {
   const rank = (m: ModelDef) => {
@@ -169,6 +182,7 @@ export function freeModels(): ModelDef[] {
 export const PROVIDER_META: Record<ProviderId, { label: string; blurb: string }> = {
   groq: { label: "Groq", blurb: "Free plan with usage limits" },
   openrouter: { label: "OpenRouter", blurb: "Selected free models with usage limits" },
+  nvidia: { label: "NVIDIA NIM", blurb: "Nemotron models, free trial endpoint" },
   vibecoder: { label: "Vibecoder Hosted", blurb: "Pay with credits" },
   opencode: { label: "OpenCode Zen", blurb: "Paid Zen models (its free tier is app-only)" },
   // zai: { label: "Z.ai", blurb: "Free GLM Flash" },
