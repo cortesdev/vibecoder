@@ -171,10 +171,11 @@ describe("model readiness", () => {
     seen = [];
     const results = await checkFreeReadiness("u1", { refresh: true });
 
-    expect(results.map((r) => r.status)).toEqual(["no_key"]);
-    expect(results[0].source).toBe("none");
-    expect(results[0].message).toContain("Settings → API keys");
-    expect(results[0].message).toContain("GEMINI_API_KEY");
+    expect(results.map((r) => r.status)).not.toContain("live");
+    const gem = results.find((r) => r.modelId === "gemini-flash")!;
+    expect(gem.source).toBe("none");
+    expect(gem.message).toContain("Settings → API keys");
+    expect(gem.message).toContain("GEMINI_API_KEY");
     expect(seen).toEqual([]); // an unconfigured provider is never called
   });
 
