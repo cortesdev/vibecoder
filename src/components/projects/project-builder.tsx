@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createTwoFilesPatch } from "diff";
-import { Download, File, FileCode, FilePlus2, FolderOpen, Globe, MoreHorizontal, Palette, Paperclip, Plug, Wallet, X } from "lucide-react";
+import { Download, File, FileCode, FilePlus2, FolderOpen, Globe, MoreHorizontal, Palette, Paperclip, PanelRightClose, PanelRightOpen, Plug, Wallet, X } from "lucide-react";
 import FileEditor from "./editor";
 import ModelPicker, { useOutsideClose } from "@/components/app/model-picker";
 import PreviewPane from "./preview-pane";
@@ -289,7 +289,8 @@ export default function ProjectBuilder({
   const boxRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [chatW, setChatW] = useState(400);
+  const [toolsOpen, setToolsOpen] = useState(true);
+  const [toolsW, setToolsW] = useState(400);
   const [toolTab, setToolTab] = useState<ToolTab>("editor");
 
   // Session context tracking — resets on reload (this is a per-session panel).
@@ -430,8 +431,9 @@ export default function ProjectBuilder({
     return mode;
   }
 
-  const nudgeChat = useCallback((dx: number) => {
-    setChatW((w) => Math.min(640, Math.max(300, w - dx)));
+  // Tools sit to the right of the chat; dragging the sash right narrows them.
+  const nudgeTools = useCallback((dx: number) => {
+    setToolsW((w) => Math.min(720, Math.max(280, w - dx)));
   }, []);
 
   async function save() {
@@ -566,12 +568,11 @@ export default function ProjectBuilder({
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-150px)] gap-0" style={{ alignItems: "stretch" }}>
-      {/* Chat — independent panel (no tabs): status · context circle · ⋯ menu */}
+    <div className="flex min-w-0 flex-1" style={{ alignItems: "stretch" }}>
+      {/* Chat — fills the available width; independent panel (no tabs): status · context circle · ⋯ menu */}
       <aside
         aria-label="Chat"
-        className="card flex shrink-0 flex-col overflow-hidden"
-        style={{ width: chatW, minWidth: 300, maxWidth: 640 }}
+        className="card flex min-w-0 flex-1 flex-col overflow-hidden"
       >
         <div
           className="flex shrink-0 items-center justify-between gap-3 px-3 py-2.5"
@@ -579,6 +580,20 @@ export default function ProjectBuilder({
         >
           <h2 className="text-[13px] font-semibold">Agent</h2>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="chip"
+              aria-label={toolsOpen ? "Hide workspace tools" : "Show workspace tools"}
+              aria-pressed={toolsOpen}
+              title={toolsOpen ? "Hide the workspace tools panel" : "Show the workspace tools panel"}
+              onClick={() => setToolsOpen((o) => !o)}
+            >
+              {toolsOpen ? (
+                <PanelRightClose size={14} aria-hidden="true" />
+              ) : (
+                <PanelRightOpen size={14} aria-hidden="true" />
+              )}
+            </button>
             <span
               className="hidden text-[12px] sm:inline"
               style={{ color: busy ? "var(--accent)" : "var(--ink-3)" }}
@@ -815,7 +830,7 @@ export default function ProjectBuilder({
             </div>
           )}
 
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -870,13 +885,15 @@ export default function ProjectBuilder({
         </form>
       </aside>
 
-      <Sash onDelta={nudgeChat} ariaLabel="Resize chat" />
+      <Sash onDelta={nudgeTools} ariaLabel="Resize workspace tools" />
 
       {/* Tools — all other tabs (Files, Editor, Preview, UI Presets, Integrations) */}
-      <aside
-        className="card flex min-w-0 flex-1 flex-col overflow-hidden"
-        aria-label="Workspace"
-      >
+      {toolsOpen && (
+        <aside
+          className="card flex shrink-0 flex-col overflow-hidden"
+          aria-label="Workspace"
+          style={{ width: toolsW, minWidth: 0, maxWidth: 720 }}
+        >
         <div
           className="flex shrink-0 flex-wrap items-center gap-1 border-b px-2 py-1.5"
           style={{ borderColor: "var(--hairline)" }}
@@ -964,7 +981,8 @@ export default function ProjectBuilder({
         ) : (
           <IntegrationsPanel />
         )}
-      </aside>
+        </aside>
+      )}
     </div>
   );
 }

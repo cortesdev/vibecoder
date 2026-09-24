@@ -43,8 +43,20 @@ function loaderFor(path: string) {
   return "ts" as const;
 }
 
+// Vault keys never carry a leading slash (paths like `src/main.tsx`), so
+// normalize everything before matching so relative/absolute specs line up.
+function norm(p: string): string {
+  return p.replace(/^\/+/, "").replace(/^\.\//, "");
+}
+
 function resolveCandidates(dir: string, spec: string): string[] {
-  const base = `${dir}${spec}`;
+  const segments = dir.split("/");
+  for (const seg of spec.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") segments.pop();
+    else segments.push(seg);
+  }
+  const base = segments.join("/");
   return [
     base,
     `${base}.tsx`,
@@ -61,8 +73,7 @@ function resolveCandidates(dir: string, spec: string): string[] {
 function findEntry(files: Files): string {
   const html = files["index.html"] ?? "";
   const m = html.match(/<script[^>]*type="module"[^>]*src="([^"]+)"/);
-  const src = m?.[1] ?? "/src/main.tsx";
-  return src.startsWith("/") ? src : `/${src}`;
+  return norm(m?.[1] ?? "/src/main.tsx");
 }
 
 async function buildPreview(files: Files, entry: string): Promise<string> {
@@ -71,23 +82,39 @@ async function buildPreview(files: Files, entry: string): Promise<string> {
     name: "vibecoder-vfs",
     setup(build) {
       build.onResolve({ filter: /.*/ }, (args: OnResolveArgs) => {
-        const spec = args.path;
+        const spec = norm(args.path);
         if (spec in CDN) return { path: CDN[spec], external: true };
-        if (args.importer === "" && files[spec] !== undefined) {
+        if (args.importer === "") {
+          if (files[spec] !== undefined) return { path: spec, namespace: "vfs" };
+          for (const candidate of [
+            "src/main.tsx",
+            "src/App.tsx",
+            "src/index.tsx",
+            "index.ts",
+            "index.js",
+          ]) {
+            if (files[candidate] !== undefined) return { path: candidate, namespace: "vfs" };
+          }
           return { path: spec, namespace: "vfs" };
         }
-        if (spec.startsWith(".")) {
+        if (args.path.startsWith("/")) {
+          return files[spec] !== undefined ? { path: spec, namespace: "vfs" } : null;
+        }
+        if (args.path.startsWith(".")) {
           const dir = args.importer.slice(0, args.importer.lastIndexOf("/"));
-          for (const candidate of resolveCandidates(dir, spec)) {
+          for (const candidate of resolveCandidates(dir, args.path)) {
             if (files[candidate] !== undefined) return { path: candidate, namespace: "vfs" };
           }
         }
         return null;
       });
-      build.onLoad({ filter: /.*/, namespace: "vfs" }, (args: OnLoadArgs) => ({
-        contents: files[args.path],
-        loader: loaderFor(args.path),
-      }));
+      build.onLoad({ filter: /.*/, namespace: "vfs" }, (args: OnLoadArgs) => {
+        const contents = files[args.path];
+        if (contents === undefined) {
+          return { errors: [{ text: `Missing file "${args.path}" in the vault` }] };
+        }
+        return { contents, loader: loaderFor(args.path) };
+      });
     },
   };
 
