@@ -73,7 +73,7 @@ export default async function ProjectPage({
   }));
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col px-4 py-4">
+    <div className="flex min-w-0 min-h-0 flex-1 flex-col px-4">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="mt-0.5 truncate text-xl font-bold tracking-[-0.02em]">{project.name}</h1>

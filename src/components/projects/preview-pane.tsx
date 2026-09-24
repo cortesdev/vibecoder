@@ -285,10 +285,10 @@ export default function PreviewPane({ files }: { files: Files }) {
       </div>
 
       {/* Stage */}
-      <div className="relative min-h-0 flex-1 overflow-hidden p-3" style={{ background: "var(--stage)" }}>
+      <div className="relative flex-1 min-h-0 overflow-auto p-3" style={{ maxHeight: "66vh", overflowY: "scroll", background: "var(--stage)" }}>
         <div
           className={`relative flex h-full overflow-hidden ${mobile ? "mx-auto max-w-[390px] rounded-2xl" : "w-full rounded-lg"}`}
-          style={{ background: "#fff" }}
+          style={{ background: "#00000020", height: mobile ? 844 : "100vh", minHeight: mobile ? 844 : 0 }}
         >
           {html && (
             <iframe
@@ -300,7 +300,7 @@ export default function PreviewPane({ files }: { files: Files }) {
             />
           )}
           {err && (
-            <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="absolute inset-0 flex items-center justify-center p-4 bg-[rgba(0,0,0,0.25)]">
               <pre className="mono max-w-full overflow-auto rounded-lg p-3 text-[12px]" style={{ background: "var(--terminal)", color: "var(--accent)" }}>
                 {err}
               </pre>

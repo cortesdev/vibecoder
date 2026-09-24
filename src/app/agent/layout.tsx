@@ -31,10 +31,10 @@ export default async function AppLayout({
   ]);
 
   return (
-    <div className="flex min-h-dvh">
+    <div className="flex min-h-dvh overflow-hidden">
       {/* Sidebar */}
       <aside
-        className="flex w-[248px] shrink-0 flex-col border-r"
+        className="flex w-[248px] shrink-0 flex-col border-r min-h-0"
         style={{ borderColor: "var(--hairline)", background: "var(--bg-raised)" }}
         aria-label="App navigation"
       >
@@ -99,7 +99,7 @@ export default async function AppLayout({
       </aside>
 
       {/* Main column */}
-      <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+      <main className="flex min-w-0 min-h-0 flex-1 flex-col overflow-hidden">{children}</main>
     </div>
   );
 }

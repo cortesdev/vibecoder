@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createTwoFilesPatch } from "diff";
-import { File, FileCode, FolderOpen, Globe, Palette, Paperclip, PanelRightClose, PanelRightOpen, Plug, Send, X } from "lucide-react";
+import { File, FileCode, ChevronDown, FolderOpen, Globe, Palette, Paperclip, PanelRightClose, PanelRightOpen, Plug, Send, X } from "lucide-react";
 import FileEditor from "./editor";
 import ModelPicker from "@/components/app/model-picker";
 import PreviewPane from "./preview-pane";
@@ -161,12 +161,12 @@ export default function ProjectBuilder({
   // When arriving from the home composer with ?prompt=, send it as the first
   // chat message automatically (once).
   useEffect(() => {
-    if (initialPrompt && !autoSentRef.current && messages.length === 0 && !busy) {
+    if (initialPrompt && !autoSentRef.current && !busy) {
       autoSentRef.current = true;
       void send(undefined, initialPrompt);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPrompt, messages.length, busy]);
+  }, [initialPrompt, busy]);
 
   const filesByPath = useMemo(() => Object.fromEntries(files.map((f) => [f.path, f.content])), [files]);
 
@@ -450,9 +450,9 @@ export default function ProjectBuilder({
   }
 
   return (
-    <div className="flex min-w-0 flex-1" style={{ alignItems: "stretch" }}>
+    <div className="flex min-w-0 flex-1 min-h-0 max-h-full" style={{ alignItems: "flex-start" }}>
       {/* Chat thread */}
-      <aside aria-label="Chat" className="card flex min-w-0 flex-1 flex-col overflow-hidden">
+      <aside aria-label="Chat" className="card bg-[#00000020] flex min-w-0 min-h-0 h-full flex-1 flex-col overflow-hidden">
         <div
           className="flex shrink-0 items-center justify-between gap-3 px-3 py-2"
           style={{ borderBottom: "1px solid var(--hairline)" }}
@@ -478,7 +478,7 @@ export default function ProjectBuilder({
           </div>
         )}
 
-        <div ref={threadRef} className="flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
+        <div ref={threadRef} className="flex-1 min-h-0 space-y-3 p-4" style={{ maxHeight: "66vh", overflowY: "scroll" }} aria-live="polite">
           {messages.length === 0 && !busy && (
             <div className="px-1 pt-10 text-center">
               <p className="text-[14px] font-semibold">Talk to your agent.</p>
@@ -494,7 +494,7 @@ export default function ProjectBuilder({
                 className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed"
                 style={
                   m.role === "user"
-                    ? { background: "var(--ink)", color: "var(--bg)" }
+                    ? { background: "var(--bg)", color: "var(--ink)" }
                     : { background: "var(--bg-inset)", color: "var(--ink)", boxShadow: "inset 0 0 0 1px var(--hairline)" }
                 }
               >
@@ -531,19 +531,27 @@ export default function ProjectBuilder({
 
           {busy && (
             <div className="flex justify-start">
-              <div className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[13px]" style={{ background: "var(--bg-inset)", color: "var(--ink-2)" }}>
-                <div className="flex items-center gap-2">
+              <details className="max-w-[85%] group" style={{ cursor: "default" }}>
+                <summary className="flex items-center gap-2 rounded-2xl px-3.5 py-2.5 text-[13px] list-none cursor-pointer" style={{ background: "var(--bg-inset)", color: "var(--ink-2)" }}>
                   <span className="inline-block h-2 w-2 animate-pulse rounded-full" style={{ background: "var(--accent)" }} aria-hidden="true" />
-                  {streamStatus || "Working…"}
+                  <span className="font-medium">Thinking</span>
+                  <ChevronDown size={14} className="transition-transform group-open:rotate-180 opacity-50" aria-hidden="true" />
+                </summary>
+                <div className="mt-2 ml-6 border-l pl-3" style={{ borderColor: "var(--hairline)" }}>
+                  {trace.length > 0 ? (
+                    <ul className="mono space-y-0.5 text-[11.5px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
+                      {trace.map((line, i) => (
+                        <li key={i}>› {line}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[12px]" style={{ color: "var(--ink-3)" }}>Model is reasoning…</p>
+                  )}
+                  {streamStatus && streamStatus !== "Thinking" && (
+                    <p className="mt-2 text-[12px] font-medium" style={{ color: "var(--accent)" }}>{streamStatus}</p>
+                  )}
                 </div>
-                {trace.length > 0 && (
-                  <ul className="mono mt-2 space-y-0.5 text-[11.5px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
-                    {trace.map((line, i) => (
-                      <li key={i}>› {line}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              </details>
             </div>
           )}
         </div>
@@ -582,7 +590,7 @@ export default function ProjectBuilder({
               id="chat-prompt"
               ref={boxRef}
               className="w-full resize-none bg-transparent px-1 py-1 font-[inherit] text-[15px] leading-relaxed outline-none"
-              style={{ color: "var(--ink)", minHeight: 44 }}
+              style={{ color: "var(--ink)", minHeight: "100vh" }}
               placeholder={mode === "plan" ? "Ask for a plan…" : "Message the agent — Enter to send, Shift+Enter for a new line"}
               value={prompt}
               onChange={(e) => {
@@ -640,7 +648,7 @@ export default function ProjectBuilder({
 
       {/* Tools: files / editor / preview / presets / integrations */}
       {toolsOpen && (
-        <aside className="card flex shrink-0 flex-col overflow-hidden" aria-label="Workspace" style={{ width: 420, minWidth: 0, maxWidth: 720 }}>
+        <aside className="card flex shrink-0 min-h-0 max-h-full flex-col overflow-hidden" aria-label="Workspace" style={{ width: 420, minHeight: "98%",  minWidth: 0, maxWidth: 720 }}>
           <div className="flex shrink-0 flex-wrap items-center gap-1 border-b px-2 py-1.5" style={{ borderColor: "var(--hairline)" }} role="tablist" aria-label="Workspace">
             {TOOL_TABS.map((t) => (
               <button
