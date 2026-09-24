@@ -138,7 +138,7 @@ export async function checkModelReadiness(userId: string, model: ModelDef): Prom
   if (!("unsupported" in listed) && !listed.ok) {
     return {
       ...common,
-      status: listed.status === 429 ? "rate_limited" : "rejected",
+      status: listed.status === 429 ? "rate_limited" : listed.status >= 500 ? "unreachable" : "rejected",
       message: refusalMessage(listed.status, listed.detail, access),
     };
   }
@@ -174,7 +174,7 @@ export async function checkModelReadiness(userId: string, model: ModelDef): Prom
     // A model that is not served shows up as 404 from an OpenAI-compatible
     // surface, or as a configured id that is simply absent from the catalog.
     const status: ReadinessStatus =
-      res.status === 429 ? "rate_limited" : res.status === 404 || notInCatalog ? "model_missing" : "rejected";
+      res.status === 429 ? "rate_limited" : res.status >= 500 ? "unreachable" : res.status === 404 || notInCatalog ? "model_missing" : "rejected";
     return {
       ...common,
       status,

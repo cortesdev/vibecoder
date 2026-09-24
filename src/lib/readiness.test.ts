@@ -240,3 +240,13 @@ describe("model readiness", () => {
     expect(results[0].providerLabel).toBe("Google");
   });
 });
+
+
+it("reports overload as temporary unavailability rather than a rejected key", async () => {
+  stubReplies({ list: CATALOG, complete: { status: 503, body: [{ error: { message: "High demand" } }] } });
+  const result = await checkModelReadiness("u1", GLM);
+  expect(result.status).toBe("unreachable");
+  expect(result.message).toContain("temporarily");
+  expect(result.message).toContain("High demand");
+  expect(result.message).not.toContain("Settings → API keys");
+});

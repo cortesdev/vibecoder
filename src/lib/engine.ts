@@ -192,12 +192,14 @@ async function runFreeAnswer(
 ): Promise<RunOutcome & { model: ModelDef; swapped: string }> {
   const chain = [requested, ...freeModels().filter((m) => m.id !== requested.id)];
   const failures: string[] = [];
+  let attempted = false;
   for (const candidate of chain) {
     const { agent } = await resolveAgent(userId, candidate);
     if (!agent) {
       failures.push(`${candidate.label} (no key)`);
       continue;
     }
+    attempted = true;
     try {
       const { edits, usage } = await run(agent);
       const swapped =
@@ -231,7 +233,9 @@ async function runFreeAnswer(
     ok: false,
     model: requested,
     swapped: "",
-    error: `No free model answered (tried: ${failures.join("; ") || "none"}). ${needs}. Both providers have a $0 tier — a free Z.ai key from z.ai or a Google AI Studio key is enough, and no paid plan is involved.`,
+    error: attempted
+      ? `No configured free model could complete your request. ${failures.join("; ")}. No app credits were charged.`
+      : `No free provider is configured. Add a provider key in Settings → API keys, or configure the server: ${needs}. Availability depends on your provider account and quota.`,
   };
 }
 

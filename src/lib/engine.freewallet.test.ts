@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The billing decisions live in runModelPrompt, so we stub the wallet and
 // credit ledgers and the DB (only reachable for BYO-key models) and keep the
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   spendFreeTokens: vi.fn(),
   debitForRun: vi.fn(),
   refundRun: vi.fn(),
+  startCooldown: vi.fn(),
   freeCooldownRow: null as { nextAllowedAt: Date } | null,
 }));
 
@@ -17,7 +18,7 @@ vi.mock("./db", () => ({
     userKey: { findUnique: async () => null },
     freeCooldown: {
       findUnique: async () => mocks.freeCooldownRow,
-      upsert: async () => ({}),
+      upsert: mocks.startCooldown,
     },
   },
 }));
@@ -285,5 +286,58 @@ describe("runModelPrompt — the free model chain", () => {
     expect(outcome.error).toContain("ZAI_API_KEY");
     expect(outcome.error).toContain("GLM Flash");
     expect(mocks.debitForRun).not.toHaveBeenCalled();
+  });
+});
+
+
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+describe("free provider failure accounting", () => {
+  it("retries Gemini then falls back to GLM without billing either attempt", async () => {
+    vi.useFakeTimers();
+    process.env.GEMINI_API_KEY = "google-test";
+    process.env.ZAI_API_KEY = "zai-test";
+    const fetcher = vi.fn(async (url: string) => url.includes("googleapis.com")
+      ? Response.json([{ error: { message: "High demand" } }], { status: 503 })
+      : Response.json({ choices: [{ message: { content: JSON.stringify({ edits: [{ path: "a.ts", before: "", after: "hello" }] }) } }] }));
+    vi.stubGlobal("fetch", fetcher);
+    const pending = runModelPrompt({ userId: "u1", projectId: "p1", modelId: "gemini-flash", prompt: "build", files: {}, run: (agent) => agent.run("build", {}) });
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    expect(result.ok).toBe(true);
+    expect(result.modelId).toBe("glm-flash");
+    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(mocks.startCooldown).toHaveBeenCalledTimes(1);
+    expect(mocks.debitForRun).not.toHaveBeenCalled();
+    expect(mocks.spendFreeTokens).not.toHaveBeenCalled();
+  });
+
+  it("leaves allowance and cooldown untouched when the only configured provider is busy", async () => {
+    vi.useFakeTimers();
+    process.env.GEMINI_API_KEY = "google-test";
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: { message: "High demand" } }, { status: 503 })));
+    const pending = runModelPrompt({ userId: "u1", projectId: "p1", modelId: "gemini-flash", prompt: "build", files: {}, run: (agent) => agent.run("build", {}) });
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("temporarily");
+    expect(result.error).not.toContain("GEMINI_API_KEY");
+    expect(result.error).not.toContain("no paid plan");
+    expect(mocks.startCooldown).not.toHaveBeenCalled();
+    expect(mocks.debitForRun).not.toHaveBeenCalled();
+    expect(mocks.spendFreeTokens).not.toHaveBeenCalled();
+  });
+
+  it("does not spend free tokens when the provider returns no usable changes", async () => {
+    process.env.VIBECODER_OPENAI_API_KEY = "test-key";
+    mocks.ensureFreeWallet.mockResolvedValue({ balance: 50_000 });
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ choices: [{ message: { content: '{"edits":[]}' } }] })));
+    try {
+      const result = await runModelPrompt({ userId: "u1", projectId: "p1", modelId: "gpt", prompt: "build", files: {}, run: (agent) => agent.run("build", {}) });
+      expect(result.ok).toBe(false);
+      expect(mocks.spendFreeTokens).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.VIBECODER_OPENAI_API_KEY;
+    }
   });
 });

@@ -142,3 +142,24 @@ repo's `releases/latest/download`) plus the canonical asset names in
 `src/components/download-buttons.tsx`. A private repo serves those assets only
 to signed-in users — make the repo public or point that env var at a CDN before
 launching the download page.
+
+### Provider reliability
+
+Generation retries HTTP 429, 500, 502, 503 and 504 up to three total attempts,
+with exponential backoff and jitter. A provider's `Retry-After` is respected;
+waits longer than five seconds end that provider attempt instead of retrying
+prematurely. Each provider has a 45-second total budget, including response
+reading and waits. Network failures/timeouts are not replayed automatically
+because the provider may already have processed the request.
+
+Free requests then try the other configured free provider. Missing keys are
+skipped; a free request never switches to a paid model. No automatic fallback
+can help when the only configured provider is unavailable. The prompt route
+requests a 120-second deployment timeout for the two-provider path; check
+that your hosting plan supports it.
+
+Overload, quota, authentication and billing errors have distinct messages.
+Failed or unusable model responses do not start the free cooldown or spend
+free tokens; failed paid generation follows the existing credit-refund path.
+These are app accounting rules, not a guarantee that a provider bills nothing
+for failed requests. Provider account access, quotas and prices still apply.

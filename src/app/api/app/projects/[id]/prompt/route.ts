@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { runPrompt, type PromptAttachment } from "@/lib/projects";
 
+// Two providers, each with a 45-second request budget, plus persistence.
+export const maxDuration = 120;
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
