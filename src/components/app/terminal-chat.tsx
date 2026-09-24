@@ -46,7 +46,7 @@ export default function TerminalChat() {
           disabled={busy}
           placeholder="Describe what you want to build…"
           aria-label="What do you want to build?"
-          className="w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2.5 text-[12.5px] text-[#e8e8ee] outline-none placeholder:text-[#6b6b74] focus:border-[#30d158]/60"
+          className="w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2.5 text-[12.5px] text-[#e8e8ee] outline-none placeholder:text-[#6b6b74]  "
         />
         <div className="mt-2.5 flex items-center justify-between">
           <span className="text-[11px]" style={{ color: "#6b6b74" }}>

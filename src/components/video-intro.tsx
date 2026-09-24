@@ -10,7 +10,6 @@
 // out as it leaves.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 
 export const VIDEO_INTRO_ID = "l-HqiSQJAPs";
 
@@ -60,13 +59,13 @@ function sampleAmp(progress: number): number {
 
 type Phase = "visible" | "exiting";
 
-export default function VideoIntro({ videoId = VIDEO_INTRO_ID }: { videoId?: string }) {
+export default function VideoIntro() {
   const [phase, setPhase] = useState<Phase>("visible");
   const [gone, setGone] = useState(false);
-  const [coverScale, setCoverScale] = useState(1);
 
   const panelRef = useRef<HTMLDivElement>(null);
   const bandPathRef = useRef<SVGPathElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const exitedRef = useRef(false);
   const reducedRef = useRef(false);
 
@@ -80,6 +79,12 @@ export default function VideoIntro({ videoId = VIDEO_INTRO_ID }: { videoId?: str
   const dismiss = useCallback(() => {
     if (exitedRef.current) return;
     exitedRef.current = true;
+    // Stop playback before the panel lifts — otherwise the promo keeps
+    // playing (and looping) behind the reveal for its last second.
+    const video = videoRef.current;
+    if (video) {
+      video.pause();
+    }
     // Only start the exit animation here. `setGone` fires when the animation
     // completes (in the exiting effect below) — unmounting here would skip it.
     setPhase("exiting");
@@ -116,27 +121,6 @@ export default function VideoIntro({ videoId = VIDEO_INTRO_ID }: { videoId?: str
       window.removeEventListener("message", onMessage);
     };
   }, [gone, dismiss]);
-
-  // Keep the video covering the viewport at any aspect ratio. The source swaps
-  // between landscape (16:9) on desktop and portrait (9:16) on mobile, so the
-  // cover math has to swap with it.
-  useEffect(() => {
-    const measure = () => {
-      const el = panelRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      if (r.width > 0 && r.height > 0) {
-        const portrait = window.matchMedia("(max-width: 768px)").matches;
-        const scale = portrait
-          ? Math.max(1, (r.width * 16) / (r.height * 9))
-          : Math.max(1, (r.height * 16) / (r.width * 9));
-        setCoverScale(scale);
-      }
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
 
   // The reveal: lift the panel with the maloca easing while the bottom edge
   // sags through the same keyframed amplitude (rAF drives the path).
@@ -186,30 +170,30 @@ export default function VideoIntro({ videoId = VIDEO_INTRO_ID }: { videoId?: str
     >
       <div ref={panelRef} className="absolute inset-0 will-change-transform">
         {/* Autoplaying promo videos inside the mask — landscape on desktop,
-            portrait on mobile, per the <source> media queries below */}
+            portrait on mobile, per the <source> media queries below. The
+            element is full-bleed with object-fit: cover, so whichever source
+            the browser picks crops to fill the screen with no letterboxing. */}
         <video
-          className="pointer-events-none absolute left-1/2 top-1/2"
+          ref={videoRef}
+          className="pointer-events-none absolute inset-0 h-full w-full"
           autoPlay
           muted
           playsInline
           poster=""
           onEnded={dismiss}
-          style={{
-            width: "100%",
-            aspectRatio: "16 / 9",
-            transform: `translate(-50%, -50%) scale(${coverScale})`,
-            pointerEvents: "none",
-          }}
+          style={{ objectFit: "cover" as const }}
         >
           <source
             src="https://ik.imagekit.io/17xxw7xjq/videos/vibecoder-promo-landscape.webm?updatedAt=1790252675645"
             type="video/webm"
-            media="(min-width: 769px)"
+            // Tablets included: only true phones (portrait-width) get the
+            // vertical cut, everything wider gets landscape.
+            media="(min-width: 481px)"
           />
           <source
             src="https://ik.imagekit.io/17xxw7xjq/videos/vibecoder-promo-vertical%20(1).webm?updatedAt=1790253969107"
             type="video/webm"
-            media="(max-width: 768px)"
+            media="(max-width: 480px)"
           />
         </video>
 
