@@ -23,7 +23,7 @@ const TOOL_TABS = [
   { id: "integrations", label: "Integrations", icon: Plug },
 ] satisfies { id: ToolTab; label: string; icon: typeof FolderOpen }[];
 
-const MODES = ["Build", "Plan", "Design"] as const;
+const MODES = ["Plan", "Build", "Design"] as const;
 type RunMode = (typeof MODES)[number];
 
 interface Attachment {

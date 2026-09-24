@@ -75,11 +75,7 @@ export default function HomeComposer({
   const [log, setLog] = useState<string[]>([]);
   const autoRanRef = useRef(false);
 
-  useEffect(() => {
-    if (!initialPrompt.trim() || autoRanRef.current || busy) return;
-    autoRanRef.current = true;
-    void submit(initialPrompt);
-  }, [initialPrompt]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Removed auto-execution on page load - user must explicitly trigger agent builds
 
   const [narrowing, setNarrowing] = useState(false);
   const [step, setStep] = useState(0);
@@ -106,7 +102,8 @@ export default function HomeComposer({
           .join("\n")}`
       : "";
     setNarrowing(false);
-    void submit(`${original}${detail}`);
+    // Don't auto-submit - let user click Build button explicitly
+    // void submit(`${original}${detail}`);
   }
 
   function choose(option: string) {
@@ -235,7 +232,7 @@ export default function HomeComposer({
     <div className="mx-auto w-full max-w-[720px]">
       <div className="rounded-2xl p-3 transition-shadow" style={{ background: "var(--bg-raised)", boxShadow: "inset 0 0 0 1px var(--hairline)" }}>
         <label htmlFor="home-prompt" className="sr-only">Describe what to build</label>
-        <textarea id="home-prompt" className="w-full resize-none bg-transparent px-2 py-2 font-[inherit] text-[15.5px] leading-relaxed outline-none" style={{ color: "var(--ink)" }} placeholder="Describe what to build — a landing page, a game, a dashboard…" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (initialPrompt) { if (!busy) void submit(prompt); } else { startNarrowing(); } } }} disabled={busy} />
+        <textarea id="home-prompt" className="w-full resize-none bg-transparent px-2 py-2 font-[inherit] text-[15.5px] leading-relaxed outline-none" style={{ color: "var(--ink)" }} placeholder="Describe what to build — a landing page, a game, a dashboard…" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!busy && prompt.trim()) startNarrowing(); } }} disabled={busy} />
         <div className="mt-1 flex flex-wrap items-center gap-2 px-1">
           <div className="flex rounded-lg p-0.5" style={{ background: "var(--bg-inset)" }} role="tablist" aria-label="Agent mode">
             {MODE_CHIPS.map((m) => (
@@ -243,7 +240,10 @@ export default function HomeComposer({
             ))}
           </div>
           <ModelPicker value={modelId} onChange={setModelId} readiness={readiness} />
-          <button type="button" className="btn btn-primary ml-auto flex !h-9 !w-9 items-center justify-center !p-0" onClick={startNarrowing} disabled={busy || !prompt.trim()} aria-label="Send prompt" title="Send prompt"><ArrowUp size={16} aria-hidden="true" /></button>
+          <button type="button" className="btn btn-primary ml-auto flex h-9 min-w-[100px] items-center justify-center gap-2 px-3" onClick={startNarrowing} disabled={busy || !prompt.trim()} aria-label="Start building">
+            <span>Build</span>
+            <ArrowUp size={14} aria-hidden="true" />
+          </button>
         </div>
       </div>
       <p aria-live="polite" className="notice-reveal mt-3 min-h-[22px] text-center text-[13px]" style={{ color: error ? "var(--accent)" : "var(--ink-2)" }}>{error || status || "\u00A0"}</p>
