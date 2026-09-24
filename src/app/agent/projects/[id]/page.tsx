@@ -18,6 +18,7 @@ export default async function ProjectPage({
   const noticeParam = typeof sp.notice === "string" ? sp.notice : "";
   const fallbackParam = sp.fallback === "1";
   const errorParam = typeof sp.error === "string" ? sp.error : "";
+  const initialPrompt = typeof sp.prompt === "string" ? decodeURIComponent(sp.prompt) : "";
 
   const user = await currentUser();
   if (!user) notFound();
@@ -61,6 +62,7 @@ export default async function ProjectPage({
           createdAt: c.createdAt.toISOString(),
         }))}
         initialNotice={notice}
+        initialPrompt={initialPrompt}
         readiness={readiness}
       />
     </div>

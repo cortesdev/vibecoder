@@ -102,8 +102,7 @@ export default function HomeComposer({
           .join("\n")}`
       : "";
     setNarrowing(false);
-    // Don't auto-submit - let user click Build button explicitly
-    // void submit(`${original}${detail}`);
+    void submit(`${original}${detail}`);
   }
 
   function choose(option: string) {
@@ -115,36 +114,6 @@ export default function HomeComposer({
   function chooseCustom() {
     const t = draft.trim();
     if (t) choose(t);
-  }
-
-  async function readStream(res: Response, projectId: string, onDone: (data: { ok: boolean; error?: string; notice?: string; usedFallback?: boolean }) => void): Promise<void> {
-    const reader = res.body?.getReader();
-    if (!reader) throw new Error("No stream");
-    const decoder = new TextDecoder();
-    let buf = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const parts = buf.split("\n\n");
-      buf = parts.pop() ?? "";
-      for (const part of parts) {
-        const line = part.trim().split("\n").find((l) => l.startsWith("data: "));
-        if (!line) continue;
-        try {
-          const msg = JSON.parse(line.slice(6)) as { type: string; message?: string; error?: string; notice?: string; usedFallback?: boolean; ok?: boolean };
-          if (msg.type === "status" || msg.type === "heartbeat") {
-            if (msg.message) { setStatus(msg.message); setLog((p) => [...p.slice(-18), msg.message!]); }
-          } else if (msg.type === "error") {
-            onDone({ ok: false, error: msg.error, notice: msg.notice });
-            return;
-          } else if (msg.type === "done") {
-            onDone(msg as unknown as { ok: boolean; error?: string; notice?: string; usedFallback?: boolean });
-            return;
-          }
-        } catch {}
-      }
-    }
   }
 
   async function submit(text: string) {
@@ -163,38 +132,11 @@ export default function HomeComposer({
       const createdData = (await created.json()) as { ok: boolean; project?: { id: string }; error?: string };
       if (!created.ok || !createdData.ok || !createdData.project) throw new Error(createdData.error ?? "Could not create the project.");
       const projectId = createdData.project.id;
-      setStatus(mode === "Plan" ? "Planning…" : "Agent is building…");
-      setLog((p) => [...p, mode === "Plan" ? "Planning…" : "Agent is building…"]);
-      const run = await fetch(`/api/app/projects/${projectId}/prompt/stream`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ prompt: text, modelId }),
-      });
-      if (run.headers.get("content-type")?.includes("text/event-stream")) {
-        await readStream(run, projectId, (runData) => {
-          if (!runData.ok) {
-            router.push(`/agent/projects/${projectId}?error=${encodeURIComponent(runData.error ?? "agent failed")}`);
-            router.refresh();
-            return;
-          }
-          const params = new URLSearchParams();
-          if (runData.usedFallback) params.set("fallback", "1");
-          if (runData.notice) params.set("notice", runData.notice);
-          router.push(`/agent/projects/${projectId}${params.size ? `?${params}` : ""}`);
-          router.refresh();
-        });
-        return;
-      }
-      const runData = (await run.json()) as { ok: boolean; error?: string; notice?: string; usedFallback?: boolean };
-      if (!run.ok || !runData.ok) {
-        router.push(`/agent/projects/${projectId}?error=${encodeURIComponent(runData.error ?? "agent failed")}`);
-        router.refresh();
-        return;
-      }
+      // Navigate to project page with the prompt as URL parameter
+      // The agent will run on the project page
       const params = new URLSearchParams();
-      if (runData.usedFallback) params.set("fallback", "1");
-      if (runData.notice) params.set("notice", runData.notice);
-      router.push(`/agent/projects/${projectId}${params.size ? `?${params}` : ""}`);
+      params.set("prompt", text);
+      router.push(`/agent/projects/${projectId}?${params.toString()}`);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");

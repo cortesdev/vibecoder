@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createTwoFilesPatch } from "diff";
 import { Download, File, FileCode, FilePlus2, FolderOpen, Globe, MoreHorizontal, Palette, Paperclip, PanelRightClose, PanelRightOpen, Plug, X } from "lucide-react";
 import FileEditor from "./editor";
@@ -259,12 +259,14 @@ export default function ProjectBuilder({
   initialFiles,
   initialChanges,
   initialNotice,
+  initialPrompt,
   readiness = [],
 }: {
   projectId: string;
   initialFiles: ProjectFileDto[];
   initialChanges: ChangeDto[];
   initialNotice?: string;
+  initialPrompt?: string;
   readiness?: ModelReadiness[];
 }) {
   const [files, setFiles] = useState<ProjectFileDto[]>(initialFiles);
@@ -279,6 +281,16 @@ export default function ProjectBuilder({
   const [status, setStatus] = useState(initialNotice ?? "");
   const [notice, setNotice] = useState(initialNotice ?? "");
   const [log, setLog] = useState<string[]>([]);
+  const initialPromptSubmittedRef = useRef(false);
+
+  // Auto-submit initial prompt on first load
+  useEffect(() => {
+    if (initialPrompt && !initialPromptSubmittedRef.current && !busy) {
+      initialPromptSubmittedRef.current = true;
+      setPrompt(initialPrompt);
+      runAgent();
+    }
+  }, [initialPrompt, busy]);
 
   const boxRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
