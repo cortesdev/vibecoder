@@ -34,8 +34,8 @@ export async function POST(
 
   const result = await runPrompt(user.id, id, prompt, modelId, useFreeTokens, attachments);
   if (!result.ok) {
-    const status = result.error === "not_found" ? 404 : 400;
-    return NextResponse.json(result, { status });
+    const status = result.error === "not_found" ? 404 : result.cooldownMs ? 429 : 400;
+    return NextResponse.json(result, { status, ...(result.cooldownMs ? { headers: { "retry-after": String(Math.ceil(result.cooldownMs / 1000)) } } : {}) });
   }
   return NextResponse.json(result, { status: 201 });
 }

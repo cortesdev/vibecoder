@@ -169,7 +169,12 @@ export async function runPrompt(
   });
 
   if (!outcome.ok || !outcome.edits) {
-    return { ok: false as const, error: outcome.error ?? "agent failed", notice: outcome.notice };
+    return {
+      ok: false as const,
+      error: outcome.error ?? "agent failed",
+      notice: outcome.notice,
+      cooldownMs: outcome.cooldownMs,
+    };
   }
   const edits = outcome.edits;
 

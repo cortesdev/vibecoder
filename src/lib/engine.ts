@@ -9,6 +9,7 @@ import {
 } from "./models";
 import { debitForRun, refundRun } from "./credits";
 import { FREE_TOKENS_PER_CREDIT, ensureFreeWallet, spendFreeTokens } from "./freewallet";
+import { freeCooldownMs, startFreeCooldown } from "./freecooldown";
 import { LlmAgent, type LlmConfig } from "./agent/llm";
 import { MockAgent } from "./agent/mock";
 import type { Agent } from "./agent/types";
@@ -78,6 +79,8 @@ export interface RunOutcome {
   freeTokensLeft?: number;
   freeExhausted?: boolean;
   notice?: string;
+  /** Milliseconds until a cooldown-gated free run is allowed again (ok: false). */
+  cooldownMs?: number;
 }
 
 async function keyFor(userId: string, provider: string): Promise<string | null> {
@@ -205,6 +208,14 @@ async function resolveFreeAgent(
  * first (atomic); any failure refunds, and a drained wallet falls back to
  * the default free model so the user is never blocked.
  */
+const FREE_COOLDOWN_HINT = "Free answers run on a shared quota, so there's a short wait between them.";
+
+function cooldownMessage(ms: number): string {
+  const secs = Math.ceil(ms / 1000);
+  const when = secs >= 60 ? `${Math.ceil(secs / 60)} minute(s)` : `${secs} seconds`;
+  return `A free answer was just used for this project — try again in ${when}. ${FREE_COOLDOWN_HINT}`;
+}
+
 export async function runModelPrompt(input: {
   userId: string;
   projectId: string;
@@ -220,10 +231,15 @@ export async function runModelPrompt(input: {
 
   // --- Free / BYO path -----------------------------------------------------
   if (model.tier === "free") {
+    const cooldownMs = await freeCooldownMs(input.userId);
+    if (cooldownMs > 0) return { ok: false, error: cooldownMessage(cooldownMs), cooldownMs };
     const { agent, model: ran, problem } = await resolveFreeAgent(input.userId, model);
     if (!agent) return { ok: false, error: problem };
     try {
       const { edits, usage } = await input.run(agent);
+      // Only a completed free run starts the cooldown — a refusal that never
+      // got an answer must not cost the user their next free turn.
+      await startFreeCooldown(input.userId);
       const swapped = ran.id === model.id ? "" : `${model.label} has no key on this account yet, so this ran on ${ran.label} instead (also free).`;
       return {
         ok: true,

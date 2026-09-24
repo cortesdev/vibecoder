@@ -56,6 +56,7 @@ model User {
   serviceKeys ServiceKey[]
   freeWallet FreeWallet?
   freeTxns  FreeTxn[]
+  freeCooldown FreeCooldown?
 }
 
 // BYO API keys for free models (e.g. a free Z.ai key for GLM Flash).
@@ -146,6 +147,23 @@ model FreeTxn {
 
   @@unique([reason, ref])
   @@index([userId])
+}
+
+// Per-user cooldown for the always-free models: after one free answer, the
+// first question is gated until nextAllowedAt so a shared free quota (one
+// platform key, many users) is not drained by a single user hammering it.
+// DB-backed, not in-memory: the site runs on serverless instances where a
+// Map would be per-instance and meaningless. A row exists only while a
+// cooldown is active; upsert adds/extends it, and delete clears it after
+// the wait so the row count stays bounded by concurrent cooldowns.
+model FreeCooldown {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  nextAllowedAt DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Session {

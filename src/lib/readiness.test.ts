@@ -178,8 +178,8 @@ describe("model readiness", () => {
     expect(results.map((r) => r.status)).toEqual(["no_key", "no_key"]);
     expect(results[0].source).toBe("none");
     expect(results[0].message).toContain("Settings → API keys");
-    expect(results[0].message).toContain("ZAI_API_KEY");
-    expect(results[1].message).toContain("GEMINI_API_KEY");
+    expect(results[0].message).toContain("GEMINI_API_KEY");
+    expect(results[1].message).toContain("ZAI_API_KEY");
     expect(seen).toEqual([]); // an unconfigured provider is never called
   });
 
@@ -236,7 +236,7 @@ describe("model readiness", () => {
 
     const results = await checkFreeReadiness("u1", { refresh: true });
 
-    expect(results.map((r) => r.status)).toEqual(["no_key", "live"]);
-    expect(results[1].providerLabel).toBe("Google");
+    expect(results.map((r) => r.status)).toEqual(["live", "no_key"]);
+    expect(results[0].providerLabel).toBe("Google");
   });
 });

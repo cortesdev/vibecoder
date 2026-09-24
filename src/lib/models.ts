@@ -30,6 +30,22 @@ export interface ModelDef {
 // Free models must therefore come from providers that allow server use.
 export const MODELS: ModelDef[] = [
   {
+    id: "gemini-flash",
+    label: "Gemini Flash",
+    provider: "google",
+    tier: "free",
+    cost: 0,
+    // Verified against ai.google.dev (gemini-api/docs/openai gives the base URL
+    // and this model id; gemini-api/docs/rate-limits defines the Free usage tier
+    // as RPM/TPM/RPD quotas per project, RPD resetting at midnight Pacific).
+    // First in the registry: the picker and composer default to MODELS[0], and
+    // Gemini's free tier is the strongest free coder — best first-answer turn.
+    model: "gemini-3.8-flash",
+    byok: true,
+    contextLimit: 1000000,
+    note: "Google's free tier (quota-limited): key from Google AI Studio, or served by the platform.",
+  },
+  {
     id: "glm-flash",
     label: "GLM Flash",
     provider: "zai",
@@ -43,20 +59,6 @@ export const MODELS: ModelDef[] = [
     byok: true,
     contextLimit: 200000,
     note: "Z.ai's free tier: GLM-4.7-Flash is priced at $0. Key from z.ai, or served by the platform.",
-  },
-  {
-    id: "gemini-flash",
-    label: "Gemini Flash",
-    provider: "google",
-    tier: "free",
-    cost: 0,
-    // Verified against ai.google.dev (gemini-api/docs/openai gives the base URL
-    // and this model id; gemini-api/docs/rate-limits defines the Free usage tier
-    // as RPM/TPM/RPD quotas per project, RPD resetting at midnight Pacific).
-    model: "gemini-3.8-flash",
-    byok: true,
-    contextLimit: 1000000,
-    note: "Google's free tier (quota-limited): key from Google AI Studio, or served by the platform.",
   },
   {
     id: "sonnet",
@@ -97,7 +99,7 @@ export function getModel(id: string): ModelDef | null {
   return MODELS.find((m) => m.id === id) ?? null;
 }
 
-export const DEFAULT_MODEL_ID = "glm-flash";
+export const DEFAULT_MODEL_ID = "gemini-flash";
 
 /**
  * Free models in preference order, default first. The engine walks this so the
@@ -132,4 +134,4 @@ export const BYO_PROVIDERS: ProviderId[] = (Object.keys(PROVIDER_META) as Provid
 );
 
 /** Fallback chain when a paid run can't be billed: → free default. */
-export const FREE_FALLBACK_ID = "glm-flash";
+export const FREE_FALLBACK_ID = "gemini-flash";

@@ -9,9 +9,18 @@ const mocks = vi.hoisted(() => ({
   spendFreeTokens: vi.fn(),
   debitForRun: vi.fn(),
   refundRun: vi.fn(),
+  freeCooldownRow: null as { nextAllowedAt: Date } | null,
 }));
 
-vi.mock("./db", () => ({ db: { userKey: { findUnique: async () => null } } }));
+vi.mock("./db", () => ({
+  db: {
+    userKey: { findUnique: async () => null },
+    freeCooldown: {
+      findUnique: async () => mocks.freeCooldownRow,
+      upsert: async () => ({}),
+    },
+  },
+}));
 vi.mock("./freewallet", () => ({
   FREE_TOKENS_PER_CREDIT: 10_000,
   ensureFreeWallet: mocks.ensureFreeWallet,
@@ -66,6 +75,7 @@ const PLATFORM_KEY_VARS = [
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.debitForRun.mockResolvedValue(true);
+  mocks.freeCooldownRow = null; // no cooldown by default
   for (const name of PLATFORM_KEY_VARS) delete process.env[name];
 });
 
@@ -180,6 +190,24 @@ describe("runModelPrompt — free-token wallet", () => {
 });
 
 describe("runModelPrompt — the free model chain", () => {
+  it("gates a free run behind the cooldown and never touches the agent", async () => {
+    mocks.freeCooldownRow = { nextAllowedAt: new Date(Date.now() + 12 * 60 * 1000) };
+
+    const run = vi.fn(async () => ({ edits: [], usage: USAGE }));
+    const outcome = await runModelPrompt({
+      userId: "u1",
+      projectId: "p1",
+      modelId: "glm-flash",
+      prompt: "build",
+      files: {},
+      run,
+    });
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome.cooldownMs).toBeGreaterThan(0);
+    expect(outcome.error).toContain("wait between them");
+    expect(run).not.toHaveBeenCalled();
+  });
   it("runs the requested free model when the platform holds its key", async () => {
     process.env.GEMINI_API_KEY = "gemini-test-key";
 
