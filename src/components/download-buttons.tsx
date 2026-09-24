@@ -71,7 +71,7 @@ export default function DownloadButtons({ variant = "hero" }: { variant?: "hero"
         <div className="flex flex-row flex-wrap items-center justify-center gap-3">
           <a href={primary.href} className="btn btn-primary btn-lg" data-testid="primary-download">
             Download for {primary.label}
-            {primary.note ? <span className="muted-3 text-sm text-black font-normal">({primary.note})</span> : null}
+            {primary.note ? <span className=" text-sm text-black font-normal">({primary.note})</span> : null}
           </a>
           <a
             href="/agent"
