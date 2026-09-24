@@ -4,6 +4,7 @@ import GlobeBackground from "@/components/globe-background";
 import TerminalChat from "@/components/app/terminal-chat";
 import DownloadButtons from "@/components/download-buttons";
 import UpgradeCard from "@/components/upgrade-card";
+import VideoIntro from "@/components/video-intro";
 import { testEnabled } from "@/lib/env";
 import { siteConfig } from "@/lib/site";
 
@@ -112,6 +113,7 @@ const jsonLd = {
 export default function Home() {
   return (
     <>
+      <VideoIntro />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
