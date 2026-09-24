@@ -20,6 +20,8 @@ export interface TokenUsage {
 
 export interface AgentResult {
   edits: FileEdit[];
+  /** The agent's natural-language answer to show in the chat thread. */
+  reply?: string;
   usage?: TokenUsage;
 }
 

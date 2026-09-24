@@ -1,10 +1,14 @@
 import type { Agent, AgentResult, FileEdit, Files } from "./types";
 import { isValidProjectPath, sanitizePath } from "./paths";
 
-const SYSTEM_PROMPT = `You are the Vibecoder coding agent. You edit files in a
-user's React project. Respond with ONLY a JSON object of the form:
-{"edits":[{"path":"src/App.tsx","before":"<exact current full file content>","after":"<exact new full file content>"}]}
+const SYSTEM_PROMPT = `You are the Vibecoder coding agent chatting with the user inside their
+React project. You BOTH answer them in natural language AND edit files. Respond with ONLY a
+JSON object of the form:
+{"reply":"<short conversational answer telling the user what you did>","edits":[{"path":"src/App.tsx","before":"<exact current full file content>","after":"<exact new full file content>"}]}
 Rules:
+- "reply" is mandatory: one to three sentences, plain language, no JSON or code fences inside it.
+- Edits are applied automatically; do not ask permission. Just do the change and say what you did.
+- If the message is a question or small talk, reply normally with an empty edits array.
 - "before" must be byte-identical to the current content passed to you (empty string for a new file).
 - "after" is the complete new file content, never a patch or partial diff.
 - Only edit files that exist in the project (or clearly new files the user asked to create).
@@ -224,31 +228,36 @@ async function httpError(res: Response, config: LlmConfig): Promise<Error> {
   return new Error(refusalMessage(res.status, providerErrorText(body), config));
 }
 
-function parseEditsReply(reply: string): FileEdit[] {
-  const text = reply
+/** Parse the agent's JSON answer into edits plus its conversational reply. */
+function parseAgentReply(raw: string): { edits: FileEdit[]; reply: string } {
+  const text = raw
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```\s*$/, "")
     .trim();
-  let data: { edits?: unknown };
+  let data: { edits?: unknown; reply?: unknown };
   try {
-    data = JSON.parse(text) as { edits?: unknown };
+    data = JSON.parse(text) as { edits?: unknown; reply?: unknown };
   } catch {
     throw new Error("agent reply was not valid JSON");
   }
-  if (!Array.isArray(data.edits)) throw new Error("agent reply missing edits array");
-
-  const edits: FileEdit[] = [];
-  for (const raw of data.edits as unknown[]) {
-    const e = raw as FileEdit;
-    if (typeof e?.path !== "string" || typeof e.before !== "string" || typeof e.after !== "string") {
-      throw new Error("edit entry malformed");
+  const chatReply = typeof data.reply === "string" ? data.reply : "";
+  if (Array.isArray(data.edits)) {
+    const edits: FileEdit[] = [];
+    for (const rawEntry of data.edits as unknown[]) {
+      const e = rawEntry as FileEdit;
+      if (typeof e?.path !== "string" || typeof e.before !== "string" || typeof e.after !== "string") {
+        throw new Error("edit entry malformed");
+      }
+      const path = sanitizePath(e.path);
+      if (!isValidProjectPath(path)) throw new Error(`edit path rejected by sandbox: ${path}`);
+      if (e.after === e.before) continue;
+      edits.push({ ...e, path });
     }
-    const path = sanitizePath(e.path);
-    if (!isValidProjectPath(path)) throw new Error(`edit path rejected by sandbox: ${path}`);
-    if (e.after === e.before) continue;
-    edits.push({ ...e, path });
+    return { edits, reply: chatReply };
   }
-  return edits;
+  // Reply-only answer (pure chat turn, no code changes).
+  if (chatReply) return { edits: [], reply: chatReply };
+  throw new Error("agent reply missing edits array");
 }
 
 // Bound the whole provider attempt, including response bodies and backoff.
@@ -341,9 +350,9 @@ export class LlmAgent implements Agent {
           : "agent API returned empty content",
       );
     }
-    let parsed: FileEdit[];
+    let parsedReply: { edits: FileEdit[]; reply: string };
     try {
-      parsed = parseEditsReply(reply);
+      parsedReply = parseAgentReply(reply);
     } catch (err) {
       if (truncated) {
         throw new Error(
@@ -354,14 +363,15 @@ export class LlmAgent implements Agent {
     }
     // The model saw the compacted view, so match against that — but record the
     // real file content as `before`, so a revert restores the original bytes.
-    const matched = parsed
+    const matched = parsedReply.edits
       .map((edit) => ({ edit, raw: files[edit.path] ?? "" }))
       .filter(({ edit, raw }) => {
         if (!(edit.path in files)) return edit.before === "";
         return normalizeForMatch(edit.before) === normalizeForMatch(compactSource(raw, edit.path));
       })
       .filter(({ edit, raw }) => edit.after !== compactSource(raw, edit.path));
-    if (matched.length === 0) {
+    // A chat-only turn (no edits) is valid: the reply is the whole answer.
+    if (matched.length === 0 && !parsedReply.reply) {
       throw new Error("The model returned no usable changes. Please try a more specific request.");
     }
     const edits = matched
@@ -376,6 +386,6 @@ export class LlmAgent implements Agent {
           cacheReadTokens: data.usage.prompt_tokens_details?.cached_tokens ?? 0,
         }
       : undefined;
-    return { edits, usage };
+    return { edits, reply: parsedReply.reply || undefined, usage };
   }
 }

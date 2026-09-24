@@ -328,6 +328,8 @@ export async function runPrompt(
   modelId?: string,
   useFreeTokens = true,
   attachments: PromptAttachment[] = [],
+  mode = "build",
+  onEvent?: (message: string) => void,
 ) {
   const project = await findOwnedProject(userId, projectId);
   if (!project) return { ok: false as const, error: "not_found" };
@@ -336,6 +338,7 @@ export async function runPrompt(
   if (!trimmed) return { ok: false as const, error: "Prompt is empty." };
 
   const files = Object.fromEntries(project.files.map((f) => [f.path, f.content]));
+  onEvent?.(`Reading ${project.files.length} project file${project.files.length === 1 ? "" : "s"}…`);
 
   // Attachments ride along as context so the agent knows what it has to work with.
   const attachmentNote =
@@ -350,6 +353,18 @@ export async function runPrompt(
       : "";
   const agentText = `${trimmed}${attachmentNote}`;
 
+  // Modes steer the agent without changing the edit protocol: Plan asks for a
+  // written plan as an edit to a PLAN.md, Mission and Skills set the stance.
+  const MODE_PREFIX: Record<string, string> = {
+    plan:
+      "You are in PLAN mode. Do not rewrite the app. Produce a short written plan by creating or editing PLAN.md at the project root, with numbered steps and the files each step will touch.",
+    mission:
+      "You are in MISSION mode. Take the boldest correct pass at the request: make the whole thing feel finished, coherent and impressive, while keeping every edit valid for the project.",
+    skills:
+      "You are in SKILLS mode. Prefer small, surgical, well-crafted edits that demonstrate good engineering practice (clean structure, accessible markup, tidy CSS).",
+  };
+  const promptForAgent = MODE_PREFIX[mode] ? `${MODE_PREFIX[mode]}\n\n${agentText}` : agentText;
+
   const outcome = await runModelPrompt({
     userId,
     projectId,
@@ -360,15 +375,33 @@ export async function runPrompt(
     run: async (agent) => {
       let result;
       try {
-        result = await agent.run(agentText, files);
+        result = await agent.run(promptForAgent, files);
       } catch (err) {
         throw err instanceof Error ? err : new Error("agent failed");
+      }
+      for (const edit of result.edits) {
+        onEvent?.(`Editing ${edit.path}…`);
       }
       return result;
     },
   });
 
   if (!outcome.ok || !outcome.edits) {
+    // Persist the failed turn so the chat thread shows the whole history.
+    await db.prompt.create({
+      data: { projectId, content: trimmed, role: "user", mode },
+    });
+    await db.prompt.create({
+      data: {
+        projectId,
+        content: outcome.notice ? `${outcome.error ?? "Agent failed"} ${outcome.notice}` : outcome.error ?? "Agent failed",
+        role: "assistant",
+        mode,
+        modelId: outcome.modelId ?? "",
+        modelLabel: outcome.modelLabel ?? "",
+        error: outcome.error ?? "agent failed",
+      },
+    });
     return {
       ok: false as const,
       error: outcome.error ?? "agent failed",
@@ -384,7 +417,43 @@ export async function runPrompt(
     return e.before === current && e.after !== current;
   });
 
+  if (valid.length === 0 && outcome.reply?.trim()) {
+    // Pure conversational turn: no code changed, the answer is the result.
+    await db.prompt.create({ data: { projectId, content: trimmed, role: "user", mode } });
+    await db.prompt.create({
+      data: {
+        projectId,
+        content: outcome.reply.trim(),
+        role: "assistant",
+        mode,
+        modelId: outcome.modelId ?? "",
+        modelLabel: outcome.modelLabel ?? "",
+      },
+    });
+    return {
+      ok: true as const,
+      prompt: { changes: [] },
+      modelId: outcome.modelId,
+      modelLabel: outcome.modelLabel,
+      usage: outcome.usage,
+      notice: outcome.notice,
+      reply: outcome.reply.trim(),
+    };
+  }
+
   if (valid.length === 0) {
+    await db.prompt.create({ data: { projectId, content: trimmed, role: "user", mode } });
+    await db.prompt.create({
+      data: {
+        projectId,
+        content: "I couldn't match my edits against the current files — try rephrasing the request.",
+        role: "assistant",
+        mode,
+        modelId: outcome.modelId ?? "",
+        modelLabel: outcome.modelLabel ?? "",
+        error: "no usable changes",
+      },
+    });
     return { ok: false as const, error: "No usable changes from the agent." };
   }
 
@@ -392,6 +461,8 @@ export async function runPrompt(
     data: {
       projectId,
       content: trimmed,
+      role: "user",
+      mode,
       changes: {
         create: valid.map((e) => ({
           projectId,
@@ -404,9 +475,46 @@ export async function runPrompt(
     include: { changes: true },
   });
 
+  // Edits apply immediately — the chat is the driver, there is no Apply step.
+  onEvent?.(`Applying ${prompt.changes.length} file change${prompt.changes.length === 1 ? "" : "s"}…`);
+  for (const change of prompt.changes) {
+    await db.projectFile.upsert({
+      where: { projectId_path: { projectId, path: change.path } },
+      create: { projectId, path: change.path, content: change.after },
+      update: { content: change.after },
+    });
+  }
+  await db.change.updateMany({
+    where: { id: { in: prompt.changes.map((c) => c.id) } },
+    data: { status: "applied", appliedAt: new Date() },
+  });
+
+  // The agent's own words in the thread, or a fallback summary of what changed.
+  const applied = valid.map((e) => sanitizePath(e.path));
+  for (const path of applied) {
+    onEvent?.(`✓ wrote ${path}`);
+  }
+  const assistantText =
+    outcome.reply?.trim() ||
+    (applied.length
+      ? `Done — updated ${applied.join(", ")}.`
+      : "All set — no file changes were needed.");
+  await db.prompt.create({
+    data: {
+      projectId,
+      content: assistantText,
+      role: "assistant",
+      mode,
+      modelId: outcome.modelId ?? "",
+      modelLabel: outcome.modelLabel ?? "",
+    },
+  });
+
+
   return {
     ok: true as const,
     prompt,
+    reply: outcome.reply,
     modelId: outcome.modelId,
     modelLabel: outcome.modelLabel,
     usage: outcome.usage,

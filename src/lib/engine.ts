@@ -74,6 +74,8 @@ export interface RunOutcome {
   ok: boolean;
   error?: string;
   edits?: import("./agent/types").FileEdit[];
+  /** The agent's natural-language answer for the chat thread. */
+  reply?: string;
   usage?: import("./agent/types").TokenUsage;
   modelId?: string;
   modelLabel?: string;
@@ -206,7 +208,7 @@ async function runFreeAnswer(
     }
     attempted = true;
     try {
-      const { edits, usage } = await run(agent);
+      const { edits, reply, usage } = await run(agent);
       const swapped =
         candidate.id === requested.id
           ? ""
@@ -217,6 +219,7 @@ async function runFreeAnswer(
       return {
         ok: true,
         edits,
+        reply,
         usage,
         modelId: candidate.id,
         modelLabel: candidate.label,
@@ -302,10 +305,11 @@ export async function runModelPrompt(input: {
   }
 
   try {
-    const { edits, usage } = await input.run(agent);
+    const { edits, reply, usage } = await input.run(agent);
     return {
       ok: true,
       edits,
+      reply,
       usage,
       modelId: model.id,
       modelLabel: model.label,

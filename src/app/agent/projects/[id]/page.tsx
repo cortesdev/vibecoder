@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
+import { db } from "@/lib/db";
 import { findOwnedProject } from "@/lib/projects";
 import { currentUser } from "@/lib/auth";
 import { checkFreeReadiness } from "@/lib/readiness";
-import ProjectBuilder from "@/components/projects/project-builder";
+import ProjectBuilder, { type ChatMessageDto } from "@/components/projects/project-builder";
 import DeleteProject from "@/components/projects/delete-project";
 
 export default async function ProjectPage({
@@ -19,6 +19,8 @@ export default async function ProjectPage({
   const fallbackParam = sp.fallback === "1";
   const errorParam = typeof sp.error === "string" ? sp.error : "";
   const initialPrompt = typeof sp.prompt === "string" ? decodeURIComponent(sp.prompt) : "";
+  const initialMode = typeof sp.mode === "string" ? sp.mode : "build";
+  const initialModelId = typeof sp.model === "string" ? sp.model : "";
 
   const user = await currentUser();
   if (!user) notFound();
@@ -38,13 +40,42 @@ export default async function ProjectPage({
         : noticeParam
       : undefined;
 
+  // Chat thread: user prompts and assistant replies, each with the changes
+  // proposed alongside it (matched by promptId).
+  const [rows, allChanges] = await Promise.all([
+    db.prompt.findMany({
+      where: { projectId: project.id },
+      orderBy: { createdAt: "asc" },
+      take: 200,
+    }),
+    db.change.findMany({
+      where: { projectId: project.id, promptId: { not: null } },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+
+  const messages: ChatMessageDto[] = rows.map((r) => ({
+    id: r.id,
+    role: r.role === "assistant" ? "assistant" : "user",
+    content: r.content,
+    mode: r.mode,
+    modelLabel: r.modelLabel,
+    error: r.error,
+    createdAt: r.createdAt.toISOString(),
+    changes: (r.id ? allChanges.filter((c) => c.promptId === r.id) : []).map((c) => ({
+      id: c.id,
+      path: c.path,
+      status: c.status as "pending" | "applied" | "reverted",
+      before: c.before,
+      after: c.after,
+      createdAt: c.createdAt.toISOString(),
+    })),
+  }));
+
   return (
-    <div className="flex min-w-0 flex-1 flex-col px-4 py-4 ">
+    <div className="flex min-w-0 flex-1 flex-col px-4 py-4">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <Link href="/agent" className="text-xs muted hover:opacity-70">
-            ← All projects
-          </Link>
           <h1 className="mt-0.5 truncate text-xl font-bold tracking-[-0.02em]">{project.name}</h1>
         </div>
         <DeleteProject projectId={project.id} />
@@ -61,8 +92,11 @@ export default async function ProjectPage({
           after: c.after,
           createdAt: c.createdAt.toISOString(),
         }))}
+        initialMessages={messages}
         initialNotice={notice}
         initialPrompt={initialPrompt}
+        initialMode={initialMode}
+        initialModelId={initialModelId}
         readiness={readiness}
       />
     </div>

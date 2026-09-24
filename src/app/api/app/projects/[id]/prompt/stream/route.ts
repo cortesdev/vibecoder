@@ -24,9 +24,13 @@ export async function POST(
     prompt?: string;
     modelId?: string;
     attachments?: unknown[];
+    mode?: string;
   } | null;
 
   const prompt = typeof body?.prompt === "string" ? body.prompt : "";
+  const mode = ["build", "plan", "mission", "skills"].includes(body?.mode ?? "")
+    ? (body?.mode as string)
+    : "build";
   const modelId = typeof body?.modelId === "string" && body.modelId ? body.modelId : undefined;
   const attachments: PromptAttachment[] = (Array.isArray(body?.attachments) ? body.attachments : [])
     .slice(0, 12)
@@ -75,7 +79,13 @@ export async function POST(
       }, 2000);
 
       try {
-        const result = await runPrompt(user.id, id, prompt, modelId, true, attachments);
+        const result = await runPrompt(user.id, id, prompt, modelId, true, attachments, mode, (message) => {
+          try {
+            send({ type: "status", message });
+          } catch {
+            // client disconnected mid-run; keep the run going
+          }
+        });
         if (heartbeat) clearInterval(heartbeat);
         if (!result.ok) {
           send({ type: "error", error: result.error ?? "agent failed", notice: result.notice, cooldownMs: result.cooldownMs });
@@ -84,6 +94,7 @@ export async function POST(
             type: "done",
             ok: true,
             prompt: result.prompt,
+            reply: result.reply,
             modelId: result.modelId,
             modelLabel: result.modelLabel,
             usage: result.usage,

@@ -142,7 +142,10 @@ export function getModel(id: string): ModelDef | null {
   return MODELS.find((m) => m.id === id) ?? null;
 }
 
-export const DEFAULT_MODEL_ID = "groq-gpt-oss";
+// OpenRouter Free is the default for now: Groq's free tier has been less
+// reliable in practice (rate limits), so the more robust ``openrouter/free``
+// alias leads the free chain. FREE_PREFERENCE below keeps the same order.
+export const DEFAULT_MODEL_ID = "openrouter-free";
 
 /**
  * Free models in preference order. Groq answers first: it returned a one-file
@@ -152,7 +155,7 @@ export const DEFAULT_MODEL_ID = "groq-gpt-oss";
  * a wait only after the healthy providers have both refused. OpenRouter sits in
  * the middle and is capped at 50 free requests/day per key.
  */
-const FREE_PREFERENCE = ["groq-gpt-oss", "openrouter-free", "gemini-flash"];
+const FREE_PREFERENCE = ["openrouter-free", "groq-gpt-oss", "gemini-flash"];
 
 export function freeModels(): ModelDef[] {
   const rank = (m: ModelDef) => {
@@ -186,4 +189,4 @@ export const BYO_PROVIDERS: ProviderId[] = (Object.keys(PROVIDER_META) as Provid
 );
 
 /** Fallback chain when a paid run can't be billed: → free default. */
-export const FREE_FALLBACK_ID = "groq-gpt-oss";
+export const FREE_FALLBACK_ID = "openrouter-free";

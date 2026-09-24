@@ -208,10 +208,17 @@ model ProjectFile {
 }
 
 model Prompt {
-  id        String   @id @default(cuid())
-  projectId String
-  content   String
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  projectId  String
+  content    String
+  // Chat-thread fields: role distinguishes the user's message from the
+  // agent's reply, so /agent/projects/[id] can render a real conversation.
+  role       String   @default("user") // user | assistant
+  mode       String   @default("build") // build | plan | mission | skills
+  modelId    String   @default("")
+  modelLabel String   @default("")
+  error      String   @default("")
+  createdAt  DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   changes Change[]

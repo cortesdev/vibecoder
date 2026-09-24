@@ -13,7 +13,8 @@ const FAKE = {
 // Dev-only: GET /api/dev/fake-login → upserts a fake user, sets vibecoder_session, redirects to /agent
 // Gated so it never works in production.
 export async function GET(req: Request) {
-  if (process.env.NODE_ENV === "production") {
+  const isProd = (process.env.NODE_ENV as string | undefined) === "production";
+  if (isProd) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   if (req.headers.get("x-fake-login-token") !== process.env.FAKE_LOGIN_TOKEN) {
