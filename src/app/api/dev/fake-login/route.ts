@@ -39,7 +39,7 @@ export async function GET(req: Request) {
     sameSite: "lax",
     path: "/",
     maxAge: 30 * 24 * 60 * 60,
-    secure: process.env.NODE_ENV === "production",
+    secure: false, // dev only route, never production
   });
   return res;
 }
