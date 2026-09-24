@@ -27,7 +27,8 @@ export const INTEGRATION_CATEGORIES = [
 export const INTEGRATIONS: IntegrationService[] = [
   { slug: "anthropic", name: "Anthropic", category: "AI", blurb: "Claude API for assistants and agents.", monogram: "A", hue: 30 },
   { slug: "openai", name: "OpenAI", category: "AI", blurb: "GPT models for chat, embedding, and code.", monogram: "O", hue: 150 },
-  { slug: "zai", name: "Z.ai", category: "AI", blurb: "Free GLM Flash endpoint for fast inference.", monogram: "Z", hue: 230 },
+  // Z.ai (GLM Flash) is commented out for now along with the free fallback chain.
+  // { slug: "zai", name: "Z.ai", category: "AI", blurb: "Free GLM Flash endpoint for fast inference.", monogram: "Z", hue: 230 },
   { slug: "stripe", name: "Stripe", category: "Payments", blurb: "Payments, subscriptions, and billing.", monogram: "S", hue: 260 },
   { slug: "supabase", name: "Supabase", category: "Database", blurb: "Postgres with auth, realtime, and storage.", monogram: "S", hue: 145 },
   { slug: "neon", name: "Neon", category: "Database", blurb: "Serverless Postgres with branching.", monogram: "N", hue: 35 },

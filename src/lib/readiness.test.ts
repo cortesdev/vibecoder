@@ -5,8 +5,8 @@ import type { AddressInfo } from "node:net";
 // Readiness is the one place that talks to a provider outside a prompt run, so
 // these tests drive it against a real HTTP server that speaks the documented
 // OpenAI-compatible contract. Everything provider-specific goes through the
-// registry + engine seams, which is what makes one stub enough for both
-// providers: only the base URL differs.
+// registry + engine seams, which is what makes one stub enough for every
+// provider: only the base URL differs.
 
 const userKey = vi.hoisted(() => ({ value: null as string | null }));
 
@@ -29,13 +29,13 @@ type Reply = { status: number; body: unknown; contentType?: string };
 
 const CATALOG: Reply = {
   status: 200,
-  body: { object: "list", data: [{ id: "glm-4.7-flash" }, { id: "glm-5.3-flash" }] },
+  body: { object: "list", data: [{ id: "gemini-3.8-flash" }, { id: "gemini-3.8-flash-lite" }] },
 };
 const ANSWER: Reply = {
   status: 200,
   body: {
     id: "chatcmpl-1",
-    model: "glm-4.7-flash",
+    model: "gemini-3.8-flash",
     choices: [{ index: 0, message: { role: "assistant", content: "pong" }, finish_reason: "stop" }],
   },
 };
@@ -68,25 +68,20 @@ beforeAll(async () => {
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  process.env.VIBECODER_BASE_URL_ZAI = baseUrl;
   process.env.VIBECODER_BASE_URL_GOOGLE = baseUrl;
 });
 
 afterAll(async () => {
-  delete process.env.VIBECODER_BASE_URL_ZAI;
   delete process.env.VIBECODER_BASE_URL_GOOGLE;
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
 const KEY_VARS = [
-  "VIBECODER_ZAI_API_KEY",
-  "ZAI_API_KEY",
-  "Z_AI_API_KEY",
   "VIBECODER_GEMINI_API_KEY",
   "GEMINI_API_KEY",
   "GOOGLE_API_KEY",
   "GOOGLE_GENERATIVE_AI_API_KEY",
-  "VIBECODER_MODEL_GLM_FLASH",
+  "VIBECODER_MODEL_GEMINI_FLASH",
 ];
 
 beforeEach(() => {
@@ -94,36 +89,37 @@ beforeEach(() => {
   seen = [];
   replies = {};
   for (const name of KEY_VARS) delete process.env[name];
-  process.env.ZAI_API_KEY = "platform-zai-key";
+  process.env.GEMINI_API_KEY = "platform-gemini-key";
 });
 
 afterEach(() => invalidateReadiness("u1"));
 
-const GLM = getModel("glm-flash")!;
+const GEM = getModel("gemini-flash")!;
 
 describe("model readiness", () => {
   it("reports live, naming the model that actually answered and the catalog size", async () => {
     stubReplies({ list: CATALOG, complete: ANSWER });
-    const result = await checkModelReadiness("u1", GLM);
+    const result = await checkModelReadiness("u1", GEM);
 
     expect(result.status).toBe("live");
-    expect(result.answeredModel).toBe("glm-4.7-flash");
+    expect(result.answeredModel).toBe("gemini-3.8-flash");
     expect(result.catalogSize).toBe(2);
     expect(result.source).toBe("platform");
-    expect(result.providerLabel).toBe("Z.ai");
+    expect(result.providerLabel).toBe("Google");
     expect(result.message).toContain("accepted");
-    expect(result.message).toContain('"glm-4.7-flash"');
+    expect(result.message).toContain('"gemini-3.8-flash"');
     expect(seen.map((s) => `${s.method} ${s.path}`)).toEqual([
       "GET /models",
       "POST /chat/completions",
     ]);
-    expect(seen.every((s) => s.auth === "Bearer platform-zai-key")).toBe(true);
+    expect(seen.every((s) => s.auth === "Bearer platform-gemini-key")).toBe(true);
   });
 
   it("still calls it live when the provider publishes no model list", async () => {
-    // Z.ai documents no /models endpoint, so a 404 there must never read as a bad key.
+    // Some providers document no /models endpoint, so a 404 there must never
+    // read as a bad key.
     stubReplies({ list: { status: 404, body: { error: { message: "not found" } } }, complete: ANSWER });
-    const result = await checkModelReadiness("u1", GLM);
+    const result = await checkModelReadiness("u1", GEM);
 
     expect(result.status).toBe("live");
     expect(result.catalogSize).toBeUndefined();
@@ -131,16 +127,16 @@ describe("model readiness", () => {
   });
 
   it("points at the override variable when the configured model id is gone", async () => {
-    process.env.VIBECODER_MODEL_GLM_FLASH = "glm-4.7-flash-retired";
+    process.env.VIBECODER_MODEL_GEMINI_FLASH = "gemini-3.8-flash-retired";
     stubReplies({
       list: CATALOG, // catalog loaded, but without the id we are configured to use
-      complete: { status: 404, body: { error: { message: "The model 'glm-4.7-flash-retired' does not exist" } } },
+      complete: { status: 404, body: { error: { message: "The model 'gemini-3.8-flash-retired' does not exist" } } },
     });
-    const result = await checkModelReadiness("u1", GLM);
+    const result = await checkModelReadiness("u1", GEM);
 
     expect(result.status).toBe("model_missing");
     expect(result.notInCatalog).toBe(true);
-    expect(result.message).toContain("VIBECODER_MODEL_GLM_FLASH");
+    expect(result.message).toContain("VIBECODER_MODEL_GEMINI_FLASH");
     expect(result.message).toContain("does not exist");
   });
 
@@ -148,22 +144,22 @@ describe("model readiness", () => {
     stubReplies({
       list: { status: 401, body: { error: { code: "1001", message: "Authentication parameter not received in Header, unable to authenticate" } } },
     });
-    const result = await checkModelReadiness("u1", GLM);
+    const result = await checkModelReadiness("u1", GEM);
 
     expect(result.status).toBe("rejected");
-    expect(result.message).toContain("Z.ai refused");
+    expect(result.message).toContain("Google refused");
     expect(result.message).toContain("Authentication parameter not received in Header");
     expect(result.message).toContain("Settings → API keys");
-    expect(result.message).toContain("VIBECODER_ZAI_API_KEY");
+    expect(result.message).toContain("VIBECODER_GEMINI_API_KEY");
     expect(seen.map((s) => s.path)).toEqual(["/models"]); // no point asking for a completion
   });
 
   it("separates a spent quota from a bad key", async () => {
     stubReplies({
       list: CATALOG,
-      complete: { status: 429, body: { error: { message: "Rate limit reached for glm-4.7-flash" } } },
+      complete: { status: 429, body: { error: { message: "Rate limit reached for gemini-3.8-flash" } } },
     });
-    const result = await checkModelReadiness("u1", GLM);
+    const result = await checkModelReadiness("u1", GEM);
 
     expect(result.status).toBe("rate_limited");
     expect(result.message).toContain("rate limiting");
@@ -171,44 +167,43 @@ describe("model readiness", () => {
   });
 
   it("says no key without touching the network when nothing is configured", async () => {
-    delete process.env.ZAI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
     seen = [];
     const results = await checkFreeReadiness("u1", { refresh: true });
 
-    expect(results.map((r) => r.status)).toEqual(["no_key", "no_key"]);
+    expect(results.map((r) => r.status)).toEqual(["no_key"]);
     expect(results[0].source).toBe("none");
     expect(results[0].message).toContain("Settings → API keys");
     expect(results[0].message).toContain("GEMINI_API_KEY");
-    expect(results[1].message).toContain("ZAI_API_KEY");
     expect(seen).toEqual([]); // an unconfigured provider is never called
   });
 
   it("treats an empty platform key as unset, like Vercel hands a build", async () => {
-    process.env.ZAI_API_KEY = "   ";
-    const result = await checkModelReadiness("u1", GLM);
+    process.env.GEMINI_API_KEY = "   ";
+    const result = await checkModelReadiness("u1", GEM);
 
     expect(result.status).toBe("no_key");
     expect(seen).toEqual([]);
   });
 
   it("uses the user's own key and says so", async () => {
-    userKey.value = "user-own-zai-key";
+    userKey.value = "user-own-gemini-key";
     stubReplies({ list: CATALOG, complete: ANSWER });
-    const result = await checkModelReadiness("u1", GLM);
+    const result = await checkModelReadiness("u1", GEM);
 
     expect(result.status).toBe("live");
     expect(result.source).toBe("user");
     expect(result.message).toContain("your key");
-    expect(seen.every((s) => s.auth === "Bearer user-own-zai-key")).toBe(true);
+    expect(seen.every((s) => s.auth === "Bearer user-own-gemini-key")).toBe(true);
   });
 
   it("reports an unreachable provider instead of blaming the key", async () => {
-    process.env.VIBECODER_BASE_URL_ZAI = "http://127.0.0.1:9";
-    const result = await checkModelReadiness("u1", GLM);
+    process.env.VIBECODER_BASE_URL_GOOGLE = "http://127.0.0.1:9";
+    const result = await checkModelReadiness("u1", GEM);
 
     expect(result.status).toBe("unreachable");
     expect(result.message).toContain("could not be reached");
-    process.env.VIBECODER_BASE_URL_ZAI = baseUrl;
+    process.env.VIBECODER_BASE_URL_GOOGLE = baseUrl;
   });
 
   it("caches briefly, re-probes on refresh, and forgets on invalidate", async () => {
@@ -228,23 +223,12 @@ describe("model readiness", () => {
     await checkFreeReadiness("u1");
     expect(seen.length).toBeGreaterThan(before);
   });
-
-  it("checks every free model independently, so one dead provider cannot hide the other", async () => {
-    delete process.env.ZAI_API_KEY; // Z.ai unconfigured
-    process.env.GEMINI_API_KEY = "platform-gemini-key";
-    stubReplies({ list: CATALOG, complete: ANSWER });
-
-    const results = await checkFreeReadiness("u1", { refresh: true });
-
-    expect(results.map((r) => r.status)).toEqual(["live", "no_key"]);
-    expect(results[0].providerLabel).toBe("Google");
-  });
 });
 
 
 it("reports overload as temporary unavailability rather than a rejected key", async () => {
   stubReplies({ list: CATALOG, complete: { status: 503, body: [{ error: { message: "High demand" } }] } });
-  const result = await checkModelReadiness("u1", GLM);
+  const result = await checkModelReadiness("u1", GEM);
   expect(result.status).toBe("unreachable");
   expect(result.message).toContain("temporarily");
   expect(result.message).toContain("High demand");

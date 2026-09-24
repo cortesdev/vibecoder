@@ -4,7 +4,10 @@
 // free to run — the user pays the provider directly.
 
 export type Tier = "free" | "credits";
-export type ProviderId = "vibecoder" | "opencode" | "zai" | "google" | "anthropic" | "openai";
+export type ProviderId = "vibecoder" | "opencode" | "google" | "groq" | "openrouter" | "anthropic" | "openai";
+
+
+
 
 export interface ModelDef {
   id: string; // stable id used in the API
@@ -29,7 +32,19 @@ export interface ModelDef {
 // server, they just need funds, so Zen stays available for the credits tier).
 // Free models must therefore come from providers that allow server use.
 export const MODELS: ModelDef[] = [
+  
   {
+  id: "groq-gpt-oss",
+  label: "GPT-OSS 120B",
+  provider: "groq",
+  tier: "free",
+  cost: 0,
+  model: "openai/gpt-oss-120b",
+  byok: true,
+  contextLimit: 131072,
+  note: "Available on Groq's free plan, subject to account and token limits.",
+},
+{
     id: "gemini-flash",
     label: "Gemini Flash",
     provider: "google",
@@ -45,21 +60,21 @@ export const MODELS: ModelDef[] = [
     contextLimit: 1000000,
     note: "Google's free tier (quota-limited): key from Google AI Studio, or served by the platform.",
   },
-  {
-    id: "glm-flash",
-    label: "GLM Flash",
-    provider: "zai",
-    tier: "free",
-    cost: 0,
-    // Verified against docs.z.ai (api-reference/llm/chat-completion lists the
-    // model enum; guides/overview/pricing lists GLM-4.7-Flash at $0 for input,
-    // cached input and output). glm-4.5-flash and glm-4.6v-flash are also $0.
-    // "glm-4.7-flashx" is the paid sibling — do not confuse the two.
-    model: "glm-4.7-flash",
-    byok: true,
-    contextLimit: 200000,
-    note: "Z.ai's free tier: GLM-4.7-Flash is priced at $0. Key from z.ai, or served by the platform.",
-  },
+  // {
+  //   id: "glm-flash",
+  //   label: "GLM Flash",
+  //   provider: "zai",
+  //   tier: "free",
+  //   cost: 0,
+  //   // Verified against docs.z.ai (api-reference/llm/chat-completion lists the
+  //   // model enum; guides/overview/pricing lists GLM-4.7-Flash at $0 for input,
+  //   // cached input and output). glm-4.5-flash and glm-4.6v-flash are also $0.
+  //   // "glm-4.7-flashx" is the paid sibling — do not confuse the two.
+  //   model: "glm-4.7-flash",
+  //   byok: true,
+  //   contextLimit: 200000,
+  //   note: "Z.ai's free tier: GLM-4.7-Flash is priced at $0. Key from z.ai, or served by the platform.",
+  // },
   {
     id: "sonnet",
     label: "Claude Sonnet",
@@ -114,9 +129,11 @@ export function freeModels(): ModelDef[] {
 
 /** Provider metadata for the picker UI (icon letter handles the logo for now). */
 export const PROVIDER_META: Record<ProviderId, { label: string; blurb: string }> = {
+  groq: { label: "Groq", blurb: "Free plan with usage limits" },
+  openrouter: { label: "OpenRouter", blurb: "Selected free models with usage limits" },
   vibecoder: { label: "Vibecoder Hosted", blurb: "Pay with credits" },
   opencode: { label: "OpenCode Zen", blurb: "Paid Zen models (its free tier is app-only)" },
-  zai: { label: "Z.ai", blurb: "Free GLM Flash" },
+  // zai: { label: "Z.ai", blurb: "Free GLM Flash" },
   google: { label: "Google", blurb: "Free Gemini tier" },
   anthropic: { label: "Anthropic", blurb: "Hosted — billed in credits" },
   openai: { label: "OpenAI", blurb: "Hosted — billed in credits" },

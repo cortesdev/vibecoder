@@ -181,7 +181,7 @@ describe("runModelPrompt — free-token wallet", () => {
   });
 
   it("never involves the wallet for an always-free model", async () => {
-    const outcome = await call("glm-flash").promise;
+    const outcome = await call("gemini-flash").promise;
 
     expect(outcome.creditsSpent).toBeUndefined(); // free models are never billed
     expect(mocks.ensureFreeWallet).not.toHaveBeenCalled();
@@ -198,7 +198,7 @@ describe("runModelPrompt — the free model chain", () => {
     const outcome = await runModelPrompt({
       userId: "u1",
       projectId: "p1",
-      modelId: "glm-flash",
+      modelId: "gemini-flash",
       prompt: "build",
       files: {},
       run,
@@ -219,54 +219,15 @@ describe("runModelPrompt — the free model chain", () => {
     expect(outcome.notice).toBeUndefined();
   });
 
-  it("falls through to another free model instead of dead-ending", async () => {
-    process.env.ZAI_API_KEY = "zai-test-key"; // glm-flash only; Google has no key
-
-    const outcome = await call("gemini-flash").promise;
-
-    expect(outcome.ok).toBe(true);
-    expect(outcome.modelId).toBe("glm-flash");
-    expect(outcome.modelLabel).toBe("GLM Flash");
-    expect(outcome.notice).toContain("Gemini Flash");
-    expect(mocks.debitForRun).not.toHaveBeenCalled();
-  });
-
-  it("falls through to another free model when the first one fails at runtime", async () => {
-    process.env.GEMINI_API_KEY = "gemini-test-key";
-    process.env.ZAI_API_KEY = "zai-test-key";
-    let calls = 0;
-
-    const outcome = await runModelPrompt({
-      userId: "u1",
-      projectId: "p1",
-      modelId: "gemini-flash",
-      prompt: "build",
-      files: {},
-      run: async () => {
-        calls += 1;
-        // The first free model (Gemini) hits the 503 surge we saw in prod;
-        // the fallback (GLM) answers.
-        if (calls === 1) throw new Error("This model is currently experiencing high demand.");
-        return { edits: [], usage: USAGE };
-      },
-    });
-
-    expect(outcome.ok).toBe(true);
-    expect(outcome.modelId).toBe("glm-flash");
-    expect(outcome.notice).toContain("Gemini Flash");
-    expect(calls).toBe(2); // gemini attempted, then glm
-    expect(mocks.debitForRun).not.toHaveBeenCalled();
-  });
-
   it("honours a per-model id override so a rotated upstream id is an env change", async () => {
-    process.env.ZAI_API_KEY = "zai-test-key";
-    process.env.VIBECODER_MODEL_GLM_FLASH = "glm-9.9-flash";
+    process.env.GEMINI_API_KEY = "gemini-test-key";
+    process.env.VIBECODER_MODEL_GEMINI_FLASH = "gemini-9.9-flash";
     const seen: string[] = [];
 
     const outcome = await runModelPrompt({
       userId: "u1",
       projectId: "p1",
-      modelId: "glm-flash",
+      modelId: "gemini-flash",
       prompt: "build",
       files: {},
       run: async (agent) => {
@@ -276,15 +237,15 @@ describe("runModelPrompt — the free model chain", () => {
     });
 
     expect(outcome.ok).toBe(true);
-    expect(seen[0]).toContain("glm-9.9-flash");
+    expect(seen[0]).toContain("gemini-9.9-flash");
   });
 
   it("names the env var to set when no free provider has a key", async () => {
-    const outcome = await call("glm-flash").promise;
+    const outcome = await call("gemini-flash").promise;
 
     expect(outcome.ok).toBe(false);
-    expect(outcome.error).toContain("ZAI_API_KEY");
-    expect(outcome.error).toContain("GLM Flash");
+    expect(outcome.error).toContain("GEMINI_API_KEY");
+    expect(outcome.error).toContain("Gemini Flash");
     expect(mocks.debitForRun).not.toHaveBeenCalled();
   });
 });
@@ -293,20 +254,23 @@ describe("runModelPrompt — the free model chain", () => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("free provider failure accounting", () => {
-  it("retries Gemini then falls back to GLM without billing either attempt", async () => {
+  it("retries the only configured free model, then starts the cooldown without billing", async () => {
     vi.useFakeTimers();
     process.env.GEMINI_API_KEY = "google-test";
-    process.env.ZAI_API_KEY = "zai-test";
-    const fetcher = vi.fn(async (url: string) => url.includes("googleapis.com")
-      ? Response.json([{ error: { message: "High demand" } }], { status: 503 })
-      : Response.json({ choices: [{ message: { content: JSON.stringify({ edits: [{ path: "a.ts", before: "", after: "hello" }] }) } }] }));
+    let calls = 0;
+    const fetcher = vi.fn(async () => {
+      calls += 1;
+      return calls === 1
+        ? Response.json([{ error: { message: "High demand" } }], { status: 503 })
+        : Response.json({ choices: [{ message: { content: JSON.stringify({ edits: [{ path: "a.ts", before: "", after: "hello" }] }) } }] });
+    });
     vi.stubGlobal("fetch", fetcher);
     const pending = runModelPrompt({ userId: "u1", projectId: "p1", modelId: "gemini-flash", prompt: "build", files: {}, run: (agent) => agent.run("build", {}) });
     await vi.runAllTimersAsync();
     const result = await pending;
     expect(result.ok).toBe(true);
-    expect(result.modelId).toBe("glm-flash");
-    expect(fetcher).toHaveBeenCalledTimes(4);
+    expect(result.modelId).toBe("gemini-flash");
+    expect(calls).toBe(2); // one 503, then the retry answers
     expect(mocks.startCooldown).toHaveBeenCalledTimes(1);
     expect(mocks.debitForRun).not.toHaveBeenCalled();
     expect(mocks.spendFreeTokens).not.toHaveBeenCalled();

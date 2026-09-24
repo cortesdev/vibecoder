@@ -18,22 +18,26 @@ import type { Agent } from "./agent/types";
 // compatible surface at /v1; Z.ai and OpenCode Zen are OpenAI-compatible too.
 const PROVIDER_BASE_URL: Record<string, string> = {
   opencode: "https://opencode.ai/zen/v1",
-  zai: "https://api.z.ai/api/paas/v4",
+  // Z.ai (GLM Flash) is commented out for now — restore here and in
+  // PLATFORM_KEY_ENV when the free fallback chain needs it again.
+  // zai: "https://api.z.ai/api/paas/v4",
   google: "https://generativelanguage.googleapis.com/v1beta/openai",
   anthropic: "https://api.anthropic.com/v1",
   openai: "https://api.openai.com/v1",
+  groq: "https://api.groq.com/openai/v1",
 };
 
 // Env vars that can serve a provider, most specific first. The VIBECODER_ name
-// is ours; the bare vendor name is accepted so a plain ZAI_API_KEY or
-// GEMINI_API_KEY in Vercel just works. Blank values count as unset — Vercel
-// hands empty strings to the build when a var exists but has no value.
+// is ours; the bare vendor name is accepted so a plain GEMINI_API_KEY in
+// Vercel just works. Blank values count as unset — Vercel hands empty strings
+// to the build when a var exists but has no value.
 const PLATFORM_KEY_ENV: Record<string, string[]> = {
   anthropic: ["VIBECODER_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"],
   openai: ["VIBECODER_OPENAI_API_KEY", "OPENAI_API_KEY"],
   opencode: ["VIBECODER_OPENCODE_API_KEY", "OPENCODE_API_KEY"],
-  zai: ["VIBECODER_ZAI_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"],
+  // zai: ["VIBECODER_ZAI_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"],
   google: ["VIBECODER_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"],
+  groq: ["VIBECODER_GROQ_API_KEY", "GROQ_API_KEY"],
 };
 
 /** VIBECODER_MODEL_<MODEL_ID> overrides a model's provider string, so a

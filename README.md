@@ -108,8 +108,7 @@ API keys) or the platform's env var.
 
 | Model | Provider | Platform env var | Notes |
 | --- | --- | --- | --- |
-| GLM Flash (default) | Z.ai | `ZAI_API_KEY` | `glm-4.7-flash`, priced at $0 by Z.ai |
-| Gemini Flash | Google | `GEMINI_API_KEY` | free tier with quotas |
+| Gemini Flash (default) | Google | `GEMINI_API_KEY` | free tier with quotas |
 | Claude / GPT | Anthropic, OpenAI | `VIBECODER_ANTHROPIC_API_KEY`, `VIBECODER_OPENAI_API_KEY` | credits tier |
 
 **Do not use an OpenCode Zen key for free models.** Zen gates its free tier to
@@ -121,7 +120,7 @@ provider's own message, so a provider gate reads as a sentence rather than
 `agent API responded 403`.
 
 A rotated upstream model id is an env change, not a deploy:
-`VIBECODER_MODEL_GLM_FLASH=glm-4.6-flash`.
+`VIBECODER_MODEL_GEMINI_FLASH=gemini-3.8-flash`.
 
 ## Releases
 
