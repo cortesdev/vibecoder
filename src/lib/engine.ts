@@ -255,7 +255,9 @@ const FREE_COOLDOWN_HINT = "Free answers run on a shared quota, so there's a sho
 function cooldownMessage(ms: number): string {
   const secs = Math.ceil(ms / 1000);
   const when = secs >= 60 ? `${Math.ceil(secs / 60)} minute(s)` : `${secs} seconds`;
-  return `A free answer was just used for this project — try again in ${when}. ${FREE_COOLDOWN_HINT}`;
+  // Per user, not per project — say so, or the message reads as a bug when it
+  // blocks a prompt in a different project.
+  return `A free answer was just used on your account — try again in ${when}. ${FREE_COOLDOWN_HINT}`;
 }
 
 export async function runModelPrompt(input: {

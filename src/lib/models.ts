@@ -44,6 +44,22 @@ export const MODELS: ModelDef[] = [
   contextLimit: 131072,
   note: "Available on Groq's free plan, subject to account and token limits.",
 },
+  {
+    id: "openrouter-free",
+    label: "OpenRouter Free",
+    provider: "openrouter",
+    tier: "free",
+    cost: 0,
+    // The ``free`` alias auto-routes to whichever free model is actually
+    // serving, which is more robust than pinning an id that rotates. Checked
+    // against openrouter.ai: /models lists 24 zero-priced models, and the free
+    // tier is a hard 50 requests/day per key — so this sits behind Groq in
+    // FREE_PREFERENCE and never in front of it.
+    model: "openrouter/free",
+    byok: true,
+    contextLimit: 200000,
+    note: "OpenRouter's free route — 50 requests/day per key, shared by every user of that key.",
+  },
 {
     id: "gemini-flash",
     label: "Gemini Flash",
@@ -53,8 +69,9 @@ export const MODELS: ModelDef[] = [
     // Verified against ai.google.dev (gemini-api/docs/openai gives the base URL
     // and this model id; gemini-api/docs/rate-limits defines the Free usage tier
     // as RPM/TPM/RPD quotas per project, RPD resetting at midnight Pacific).
-    // First in the registry: the picker and composer default to MODELS[0], and
-    // Gemini's free tier is the strongest free coder — best first-answer turn.
+    // Kept in the registry as the last free fallback: its free tier is the
+    // strongest free coder, but it answered 503 UNAVAILABLE under load, so it
+    // must not be what a first prompt waits on.
     model: "gemini-3.8-flash",
     byok: true,
     contextLimit: 1000000,
@@ -114,17 +131,24 @@ export function getModel(id: string): ModelDef | null {
   return MODELS.find((m) => m.id === id) ?? null;
 }
 
-export const DEFAULT_MODEL_ID = "gemini-flash";
+export const DEFAULT_MODEL_ID = "groq-gpt-oss";
 
 /**
- * Free models in preference order, default first. The engine walks this so the
- * very first prompt runs on whichever free provider is actually reachable
- * (user's own key, else the platform's) instead of dead-ending on one of them.
+ * Free models in preference order. Groq answers first: it returned a one-file
+ * website in ~2s in testing, while Gemini's default id was answering 503
+ * UNAVAILABLE. Gemini stays in the chain — its free tier is the strongest free
+ * coder when it is up — but it is tried last, so a flaky upstream costs the user
+ * a wait only after the healthy providers have both refused. OpenRouter sits in
+ * the middle and is capped at 50 free requests/day per key.
  */
+const FREE_PREFERENCE = ["groq-gpt-oss", "openrouter-free", "gemini-flash"];
+
 export function freeModels(): ModelDef[] {
-  const free = MODELS.filter((m) => m.tier === "free");
-  const preferred = free.find((m) => m.id === DEFAULT_MODEL_ID);
-  return preferred ? [preferred, ...free.filter((m) => m !== preferred)] : free;
+  const rank = (m: ModelDef) => {
+    const i = FREE_PREFERENCE.indexOf(m.id);
+    return i === -1 ? FREE_PREFERENCE.length : i;
+  };
+  return MODELS.filter((m) => m.tier === "free").sort((a, b) => rank(a) - rank(b));
 }
 
 /** Provider metadata for the picker UI (icon letter handles the logo for now). */
@@ -151,4 +175,4 @@ export const BYO_PROVIDERS: ProviderId[] = (Object.keys(PROVIDER_META) as Provid
 );
 
 /** Fallback chain when a paid run can't be billed: → free default. */
-export const FREE_FALLBACK_ID = "gemini-flash";
+export const FREE_FALLBACK_ID = "groq-gpt-oss";

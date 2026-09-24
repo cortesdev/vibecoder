@@ -14,6 +14,8 @@ export interface LlmConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
+  /** Hard ceiling on completion tokens for one agent run. */
+  maxOutputTokens?: number;
   /** Human name of the provider ("Z.ai"), so failures can name who refused. */
   providerLabel?: string;
   /** Env vars the platform can hold this provider's key in — quoted back to the
@@ -31,6 +33,80 @@ export function llmConfigFromEnv(env: Record<string, string | undefined> = proce
     baseUrl: env.AGENT_BASE_URL ?? "https://api.openai.com/v1",
     model: env.AGENT_MODEL ?? "gpt-4o-mini",
   };
+}
+
+// One agent run has two budgets, both env-overridable for ops and testing.
+//
+// Output: providers otherwise pick their own ceiling, and a reasoning model
+// spends part of whatever it is given on hidden reasoning tokens (measured:
+// 425 of 784 completion tokens for a one-file website), so an unbounded run is
+// both slow and unbounded in cost. The default is deliberately above the
+// working floor — too low a cap returns empty content, not an error.
+//
+// Input: a prompt pasted from another AI can be far larger than the project it
+// asks for, and the whole project is re-sent every turn. Files are therefore
+// offered most-relevant-first inside a character budget.
+export const DEFAULT_MAX_OUTPUT_TOKENS = 2500;
+export const DEFAULT_MAX_INPUT_CHARS = 48_000;
+
+/** Cap on how many files one reply may rewrite — more than this is not a diff
+ *  anyone reviews. */
+export const MAX_EDITS_PER_RUN = 12;
+
+function positiveEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
+
+/** Effective completion-token ceiling: config first, then env, then default. */
+export function outputTokenBudget(config: Pick<LlmConfig, "maxOutputTokens">): number {
+  return config.maxOutputTokens ?? positiveEnv("VIBECODER_MAX_OUTPUT_TOKENS", DEFAULT_MAX_OUTPUT_TOKENS);
+}
+
+function maxInputChars(): number {
+  return positiveEnv("VIBECODER_MAX_INPUT_CHARS", DEFAULT_MAX_INPUT_CHARS);
+}
+
+/**
+ * How much a file matters to this prompt. Files the prompt names outrank
+ * everything; the render path (`index.html`, anything under `src/`) outranks the
+ * build config, which is almost never what a "build me a website" ask rewrites.
+ */
+function relevance(path: string, prompt: string): number {
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  let score = 0;
+  if (prompt.includes(path) || (base.length > 2 && prompt.includes(base))) score += 4;
+  if (path === "index.html" || path.startsWith("src/")) score += 2;
+  if (path === "package.json" || path === "tsconfig.json" || path.startsWith("vite.config")) score -= 1;
+  return score;
+}
+
+/**
+ * Files ordered by relevance and packed into the character budget. Whatever
+ * does not fit is named but not included, so the model still knows it exists
+ * without paying for its contents.
+ */
+function buildFileList(
+  files: Files,
+  prompt: string,
+  budget: number,
+): { text: string; omitted: string[] } {
+  const ordered = Object.keys(files).sort(
+    (a, b) => relevance(b, prompt) - relevance(a, prompt) || a.localeCompare(b),
+  );
+  const parts: string[] = [];
+  const omitted: string[] = [];
+  let used = 0;
+  for (const path of ordered) {
+    const block = `\n--- ${path} ---\n${files[path]}`;
+    if (used + block.length > budget) {
+      omitted.push(path);
+      continue;
+    }
+    used += block.length;
+    parts.push(block);
+  }
+  return { text: parts.join(""), omitted };
 }
 
 // A bare "responded 403" names neither who refused nor what to do about it.
@@ -197,19 +273,22 @@ export class LlmAgent implements Agent {
   constructor(private config: LlmConfig) {}
 
   async run(prompt: string, files: Files): Promise<AgentResult> {
-    const fileList = Object.keys(files)
-      .map((p) => `\n--- ${p} ---\n${files[p]}`)
-      .join("");
-    const userMessage = `Project files:${fileList || "\n(empty project)\n"}\n\nUser prompt: ${prompt}`;
+    const { text: fileList, omitted } = buildFileList(files, prompt, maxInputChars());
+    const omittedNote = omitted.length
+      ? `\n\n(Omitted to stay within the context budget — ask for one of these by name if it needs to change: ${omitted.join(", ")})`
+      : "";
+    const userMessage = `Project files:${fileList || "\n(empty project)\n"}${omittedNote}\n\nUser prompt: ${prompt}`;
 
+    const cap = outputTokenBudget(this.config);
     const data = (await requestCompletion(this.config, JSON.stringify({
       model: this.config.model,
+      max_tokens: cap,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userMessage },
       ],
     }))) as {
-      choices?: { message?: { content?: string } }[];
+      choices?: { message?: { content?: string }; finish_reason?: string }[];
       usage?: {
         prompt_tokens?: number;
         completion_tokens?: number;
@@ -218,10 +297,35 @@ export class LlmAgent implements Agent {
         prompt_tokens_details?: { cached_tokens?: number };
       };
     };
-    const reply = data.choices?.[0]?.message?.content ?? "";
-    if (!reply.trim()) throw new Error("agent API returned empty content");
-    const edits = parseEditsReply(reply).filter((edit) => edit.before === (files[edit.path] ?? ""));
-    if (edits.length === 0) throw new Error("The model returned no usable changes. Please try a more specific request.");
+    const choice = data.choices?.[0];
+    const reply = choice?.message?.content ?? "";
+    // "length" means the provider stopped at max_tokens, not that it finished.
+    // A reasoning model can spend the whole budget before emitting any content,
+    // which looks identical to a broken provider unless it is named here.
+    const truncated = choice?.finish_reason === "length";
+    if (!reply.trim()) {
+      throw new Error(
+        truncated
+          ? `The model used its entire ${cap}-token output budget before writing anything (hidden reasoning tokens count toward it). Raise VIBECODER_MAX_OUTPUT_TOKENS, or ask for a smaller change.`
+          : "agent API returned empty content",
+      );
+    }
+    let parsed: FileEdit[];
+    try {
+      parsed = parseEditsReply(reply);
+    } catch (err) {
+      if (truncated) {
+        throw new Error(
+          `The model hit the ${cap}-token output budget mid-reply, so its JSON was cut off. Raise VIBECODER_MAX_OUTPUT_TOKENS, or ask for a smaller change.`,
+        );
+      }
+      throw err;
+    }
+    const matched = parsed.filter((edit) => edit.before === (files[edit.path] ?? ""));
+    if (matched.length === 0) {
+      throw new Error("The model returned no usable changes. Please try a more specific request.");
+    }
+    const edits = matched.slice(0, MAX_EDITS_PER_RUN);
     const usage = data.usage?.total_tokens
       ? {
           inputTokens: data.usage.prompt_tokens ?? 0,
