@@ -125,6 +125,17 @@ export const MODELS: ModelDef[] = [
     contextLimit: 200000,
     note: "Balanced quality. Billed from credits.",
   },
+  {
+    id: "openrouter-paid",
+    label: "OpenRouter (BYOK)",
+    provider: "openrouter",
+    tier: "credits",
+    cost: 0, // user pays provider directly
+    model: "openrouter/auto",
+    byok: true,
+    contextLimit: 200000,
+    note: "Use your OpenRouter key to access any model. You're billed by OpenRouter directly.",
+  },
 ];
 
 export function getModel(id: string): ModelDef | null {
