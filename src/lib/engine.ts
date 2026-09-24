@@ -8,8 +8,7 @@ import {
   type ModelDef,
 } from "./models";
 import { debitForRun, refundRun } from "./credits";
-import { FREE_TOKENS_PER_CREDIT, ensureFreeWallet, spendFreeTokens } from "./freewallet";
-import { freeCooldownMs, startFreeCooldown } from "./freecooldown";
+
 import { LlmAgent, type LlmConfig } from "./agent/llm";
 import { MockAgent } from "./agent/mock";
 import type { Agent } from "./agent/types";
@@ -214,9 +213,7 @@ async function runFreeAnswer(
           : usedFallback
             ? `You're out of credits, so this ran on ${candidate.label} (free). Buy credits in Settings to use ${requested.label} again.`
             : `${requested.label} was unavailable, so this ran on ${candidate.label} instead (also free).`;
-      // Only a completed free run starts the cooldown — a refusal that never
-      // got an answer must not cost the user their next free turn.
-      await startFreeCooldown(userId);
+
       return {
         ok: true,
         edits,
@@ -250,33 +247,20 @@ async function runFreeAnswer(
  * first (atomic); any failure refunds, and a drained wallet falls back to
  * the default free model so the user is never blocked.
  */
-const FREE_COOLDOWN_HINT = "Free answers run on a shared quota, so there's a short wait between them.";
-
-function cooldownMessage(ms: number): string {
-  const secs = Math.ceil(ms / 1000);
-  const when = secs >= 60 ? `${Math.ceil(secs / 60)} minute(s)` : `${secs} seconds`;
-  // Per user, not per project — say so, or the message reads as a bug when it
-  // blocks a prompt in a different project.
-  return `A free answer was just used on your account — try again in ${when}. ${FREE_COOLDOWN_HINT}`;
-}
-
 export async function runModelPrompt(input: {
   userId: string;
   projectId: string;
   modelId: string | undefined;
   prompt: string;
   files: Record<string, string>;
-  /** Pay for hosted runs from the free-token wallet before credits (default). */
   useFreeTokens?: boolean;
   run: (agent: Agent) => Promise<import("./agent/types").AgentResult>;
 }): Promise<RunOutcome> {
   const requested = input.modelId ? getModel(input.modelId) : null;
   const model = requested ?? getModel(DEFAULT_MODEL_ID)!;
 
-  // --- Free / BYO path -----------------------------------------------------
+  // --- Free / BYO path — no cooldown, no wallet gating (freebuff behavior) --
   if (model.tier === "free") {
-    const cooldownMs = await freeCooldownMs(input.userId);
-    if (cooldownMs > 0) return { ok: false, error: cooldownMessage(cooldownMs), cooldownMs };
     try {
       return await runFreeAnswer(input.userId, model, input.run);
     } catch (err) {
@@ -289,73 +273,6 @@ export async function runModelPrompt(input: {
 
   // --- Credits path --------------------------------------------------------
   const ref = `${input.projectId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-
-  // Free-token wallet first: while the wallet covers the run's token price,
-  // the wallet pays and no credits are debited. A wallet that only part-covers
-  // the run is left untouched — draining it here would burn free tokens on a
-  // run that credits (or the free fallback model) end up paying for anyway.
-  // ensureFreeWallet grants the sign-up allowance on first use, so the free
-  // tokens exist even if the user never opened a page that created the wallet.
-  if (input.useFreeTokens !== false) {
-    const wallet = await ensureFreeWallet(input.userId);
-    const need = model.cost * FREE_TOKENS_PER_CREDIT;
-    if (wallet.balance >= need) {
-      const { agent } = await resolveAgent(input.userId, model);
-      if (!agent) return { ok: false, error: "Model unavailable." };
-      try {
-        const { edits, usage } = await input.run(agent);
-        // Spend what the run actually used, capped at the wallet's coverage
-        // for this prompt (never overdraw, never a zero-token no-op).
-        const used = Math.max(1, Math.min(need, usage?.totalTokens ?? need));
-        const left = await spendFreeTokens(input.userId, used, `${ref}:free`, model.label);
-        if (left !== null) {
-          return {
-            ok: true,
-            edits,
-            usage,
-            modelId: model.id,
-            modelLabel: model.label,
-            freeTokensUsed: used,
-            freeTokensLeft: left,
-            freeExhausted: left <= 0,
-          };
-        }
-        // The wallet shrank between the check and the spend (a concurrent run
-        // got there first), so the spend was refused. The work is already
-        // delivered, so bill credits for it — the ref keeps this idempotent —
-        // and never report the wallet as exhausted off a refused spend.
-        const charged = await debitForRun({
-          userId: input.userId,
-          cost: model.cost,
-          ref,
-          note: model.label,
-        });
-        if (charged) {
-          return {
-            ok: true,
-            edits,
-            usage,
-            modelId: model.id,
-            modelLabel: model.label,
-            creditsSpent: model.cost,
-          };
-        }
-        return {
-          ok: true,
-          edits,
-          usage,
-          modelId: model.id,
-          modelLabel: model.label,
-          notice: `Your free tokens ran out mid-run, so this one went through free. Buy credits to keep using ${model.label}.`,
-        };
-      } catch (err) {
-        return {
-          ok: false,
-          error: err instanceof Error ? err.message : `${model.label} failed`,
-        };
-      }
-    }
-  }
 
   const debited = await debitForRun({
     userId: input.userId,

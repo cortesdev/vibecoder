@@ -29,6 +29,7 @@ vibecode.db*
 licenses.db*
 .freebuff/
 *.tsbuildinfo
+agent/
 
 # debug
 npm-debug.log*

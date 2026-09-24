@@ -13,12 +13,15 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
+  const raw = await searchParams;
+  const nextParam = typeof raw.next === "string" ? raw.next : "";
+  const safeNext = nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/agent";
   const user = await currentUser();
-  if (user) redirect("/agent");
+  if (user) redirect(safeNext);
 
-  const { error } = await searchParams;
+  const { error } = raw;
   const messages: Record<string, string> = {
     not_configured:
       "Google sign-in isn't configured yet. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to enable it.",
@@ -44,7 +47,7 @@ export default async function LoginPage({
           )}
 
           {googleEnabled ? (
-            <a href="/api/auth/google" className="btn btn-primary mt-6 w-full">
+            <a href={safeNext !== "/agent" ? `/api/auth/google?next=${encodeURIComponent(safeNext)}` : "/api/auth/google"} className="btn btn-primary mt-6 w-full">
               Continue with Google
             </a>
           ) : (

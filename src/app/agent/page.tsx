@@ -22,6 +22,10 @@ export default async function AppHomePage({
   const initialPrompt = rawInitial.slice(0, 4000);
 
   const user = await currentUser();
+  if (!user && initialPrompt.trim()) {
+    const { redirect } = await import("next/navigation");
+    redirect(`/login?next=${encodeURIComponent(`/agent?prompt=${encodeURIComponent(initialPrompt)}`)}`);
+  }
   const readiness = user ? await checkFreeReadiness(user.id) : [];
   const projects = user
     ? await db.project.findMany({

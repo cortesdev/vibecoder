@@ -2,8 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { findOwnedProject } from "@/lib/projects";
 import { currentUser } from "@/lib/auth";
-import { getBalance, ensureWallet } from "@/lib/credits";
-import { ensureFreeWallet, getFreeBalance } from "@/lib/freewallet";
 import { checkFreeReadiness } from "@/lib/readiness";
 import ProjectBuilder from "@/components/projects/project-builder";
 import DeleteProject from "@/components/projects/delete-project";
@@ -19,23 +17,25 @@ export default async function ProjectPage({
   const sp = await searchParams;
   const noticeParam = typeof sp.notice === "string" ? sp.notice : "";
   const fallbackParam = sp.fallback === "1";
+  const errorParam = typeof sp.error === "string" ? sp.error : "";
 
   const user = await currentUser();
   if (!user) notFound();
 
-  const [project, balance, freeTokens, readiness] = await Promise.all([
+  const [project, readiness] = await Promise.all([
     findOwnedProject(user.id, id),
-    ensureWallet(user.id).then(() => getBalance(user.id)),
-    ensureFreeWallet(user.id).then(() => getFreeBalance(user.id)),
     checkFreeReadiness(user.id),
   ]);
   if (!project) notFound();
 
-  const notice = noticeParam
-    ? fallbackParam
-      ? `Out of credits — ran the free model instead. ${noticeParam}`
-      : noticeParam
-    : undefined;
+  const errorNotice = errorParam ? decodeURIComponent(errorParam) : "";
+  const notice = errorNotice
+    ? `Build failed: ${errorNotice}`
+    : noticeParam
+      ? fallbackParam
+        ? `Out of credits — ran the free model instead. ${noticeParam}`
+        : noticeParam
+      : undefined;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col px-4 py-4 ">
@@ -61,8 +61,6 @@ export default async function ProjectPage({
           createdAt: c.createdAt.toISOString(),
         }))}
         initialNotice={notice}
-        balance={balance}
-        freeTokens={freeTokens}
         readiness={readiness}
       />
     </div>

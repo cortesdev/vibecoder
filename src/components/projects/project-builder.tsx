@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { createTwoFilesPatch } from "diff";
-import { Download, File, FileCode, FilePlus2, FolderOpen, Globe, MoreHorizontal, Palette, Paperclip, PanelRightClose, PanelRightOpen, Plug, Wallet, X } from "lucide-react";
+import { Download, File, FileCode, FilePlus2, FolderOpen, Globe, MoreHorizontal, Palette, Paperclip, PanelRightClose, PanelRightOpen, Plug, X } from "lucide-react";
 import FileEditor from "./editor";
 import ModelPicker, { useOutsideClose } from "@/components/app/model-picker";
 import PreviewPane from "./preview-pane";
@@ -260,16 +259,12 @@ export default function ProjectBuilder({
   initialFiles,
   initialChanges,
   initialNotice,
-  balance,
-  freeTokens: initialFreeTokens,
   readiness = [],
 }: {
   projectId: string;
   initialFiles: ProjectFileDto[];
   initialChanges: ChangeDto[];
   initialNotice?: string;
-  balance: number;
-  freeTokens: number;
   readiness?: ModelReadiness[];
 }) {
   const [files, setFiles] = useState<ProjectFileDto[]>(initialFiles);
@@ -283,8 +278,7 @@ export default function ProjectBuilder({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState(initialNotice ?? "");
   const [notice, setNotice] = useState(initialNotice ?? "");
-  const [freeTokens, setFreeTokens] = useState(initialFreeTokens);
-  const [useFreeTokens, setUseFreeTokens] = useState(true);
+  const [log, setLog] = useState<string[]>([]);
 
   const boxRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -304,23 +298,6 @@ export default function ProjectBuilder({
     () => Object.fromEntries(files.map((f) => [f.path, f.content])),
     [files],
   );
-
-  // Fresh free-wallet balance (the server prop is from first paint; runs in
-  // this session may have drained it).
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/app/wallet")
-      .then((r) => r.json().catch(() => null))
-      .then((data: { ok?: boolean; balance?: number } | null) => {
-        if (alive && data?.ok && typeof data.balance === "number") {
-          setFreeTokens(data.balance);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   const totals = useMemo(
     () =>
@@ -457,78 +434,91 @@ export default function ProjectBuilder({
     }
   }
 
+  async function readStream(res: Response): Promise<{
+    ok: boolean; error?: string; notice?: string; modelLabel?: string; usedFallback?: boolean; creditsSpent?: number; usage?: TokenUsage; prompt?: { changes: ChangeDto[] };
+  } | null> {
+    if (!res.headers.get("content-type")?.includes("text/event-stream")) return null;
+    const reader = res.body?.getReader();
+    if (!reader) return null;
+    const decoder = new TextDecoder();
+    let buf = "";
+    let result: { ok: boolean; error?: string; notice?: string; modelLabel?: string; usedFallback?: boolean; creditsSpent?: number; usage?: TokenUsage; prompt?: { changes: ChangeDto[] } } | null = null;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() ?? "";
+      for (const part of parts) {
+        const line = part.trim().split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        try {
+          const msg = JSON.parse(line.slice(6)) as { type: string; message?: string; error?: string; notice?: string; modelLabel?: string; usedFallback?: boolean; usage?: TokenUsage; prompt?: { changes: ChangeDto[] }; ok?: boolean };
+          if (msg.type === "status" || msg.type === "heartbeat") {
+            if (msg.message) { setStatus(msg.message); setLog((p) => [...p.slice(-18), msg.message!]); }
+          } else if (msg.type === "error") {
+            result = { ok: false, error: msg.error, notice: msg.notice };
+            return result;
+          } else if (msg.type === "done") {
+            result = msg as unknown as typeof result & { ok: true };
+            return result;
+          }
+        } catch {}
+      }
+    }
+    return result;
+  }
+
   async function runAgent(e?: React.FormEvent) {
     e?.preventDefault();
     const text = prompt.trim();
     if (!text || busy) return;
     const attachCount = attachments.length;
     setBusy(true);
+    setLog([mode === "Plan" ? "Planning…" : mode === "Design" ? "Designing…" : "Sending prompt…"]);
     setStatus(mode === "Plan" ? "Planning…" : mode === "Design" ? "Designing…" : "Agent is building…");
     setNotice("");
-    const res = await fetch(`/api/app/projects/${projectId}/prompt`, {
+    const res = await fetch(`/api/app/projects/${projectId}/prompt/stream`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         prompt: text,
         modelId,
-        useFreeTokens,
         attachments: attachments.length
           ? attachments.map(({ name, type, size, dataUrl }) => ({ name, type, size, dataUrl }))
           : undefined,
       }),
     });
-    const data = (await res.json()) as {
-      ok: boolean;
-      error?: string;
-      notice?: string;
-      modelLabel?: string;
-      usedFallback?: boolean;
-      creditsSpent?: number;
-      freeTokensUsed?: number;
-      freeTokensLeft?: number;
-      freeExhausted?: boolean;
-      usage?: TokenUsage;
-      prompt?: { changes: ChangeDto[] };
-    };
+    let data: { ok: boolean; error?: string; notice?: string; modelLabel?: string; usedFallback?: boolean; creditsSpent?: number; usage?: TokenUsage; prompt?: { changes: ChangeDto[] } } | null = await readStream(res);
+    if (!data) {
+      // fallback: non-streaming JSON (keeps old route usable)
+      const fallbackRes = res.headers.get("content-type")?.includes("application/json") ? res : await fetch(`/api/app/projects/${projectId}/prompt`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: text, modelId, attachments: attachments.length ? attachments.map(({ name, type, size, dataUrl }) => ({ name, type, size, dataUrl })) : undefined }),
+      });
+      data = (await fallbackRes.json()) as typeof data & { ok: boolean };
+    }
     setBusy(false);
-    if (!res.ok || !data.ok || !data.prompt) {
-      setStatus(data.error ?? "The agent did not return changes.");
+    if (!data || !data.ok || !data.prompt) {
+      setStatus((data as { error?: string })?.error ?? "The agent did not return changes.");
+      setLog((p) => [...p, `Error: ${(data as { error?: string })?.error ?? "no changes"}`]);
       return;
     }
     setChanges((prev) => [...prev, ...data.prompt!.changes]);
     setPrompt("");
     for (const a of attachments) if (a.url) URL.revokeObjectURL(a.url);
     setAttachments([]);
-    setRuns((prev) => [
-      ...prev,
-      {
-        prompt: text,
-        createdAt: new Date(),
-        usage: data.usage,
-        creditsSpent: data.creditsSpent,
-        freeTokensUsed: data.freeTokensUsed,
-      },
-    ]);
+    setLog((p) => [...p, `Done — ${data.prompt!.changes.length} file(s): ${data.prompt!.changes.map((c) => c.path).join(", ")}`]);
+    setRuns((prev) => [...prev, { prompt: text, createdAt: new Date(), usage: data!.usage, creditsSpent: data!.creditsSpent }]);
     const bits: string[] = [];
-    bits.push(`${data.modelLabel ?? "Agent"} proposed ${data.prompt.changes.length} change(s).`);
+    bits.push(`${data.modelLabel ?? "Agent"} proposed ${data.prompt.changes.length} change(s): ${data.prompt.changes.map((c) => c.path).join(", ")}.`);
     if (attachCount > 0) bits.push(`with ${attachCount} attachment${attachCount === 1 ? "" : "s"}.`);
-    if (data.freeTokensUsed) {
-      bits.push(`−${data.freeTokensUsed.toLocaleString()} free tokens.`);
-      if (typeof data.freeTokensLeft === "number") setFreeTokens(data.freeTokensLeft);
-    } else if (data.creditsSpent) {
-      bits.push(`−${data.creditsSpent} credits.`);
-    }
+    if (data.creditsSpent) bits.push(`−${data.creditsSpent} credits.`);
     if (data.usedFallback) bits.push("Out of credits — ran the free model.");
     setStatus(bits.join(" "));
-    if (data.freeExhausted) {
-      setNotice(
-        `Your free tokens are used up. Buy credits to keep using ${
-          data.modelLabel ?? "hosted models"
-        }.`,
-      );
-    } else if (data.notice) {
-      setNotice(data.notice);
-    }
+    if (data.notice) setNotice(data.notice);
+    // show the outcome right away
+    setToolTab("files");
   }
 
   async function act(change: ChangeDto, action: "apply" | "revert") {
@@ -622,6 +612,15 @@ export default function ProjectBuilder({
                 {notice}
               </p>
             )}
+          </div>
+        )}
+        {(busy || log.length > 0) && tab !== "context" && (
+          <div className="mx-3 mt-2 rounded-lg px-3 py-2" style={{ background: "var(--bg-inset)", border: "1px solid var(--hairline)" }} aria-live="polite">
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>{busy ? "Working" : "Last run"}</p>
+            <ul className="mono space-y-0.5 text-[12.5px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
+              {log.map((m, i) => (<li key={i}>› {m}</li>))}
+            </ul>
+            {busy && <p className="mt-1 mono text-[11px]" style={{ color: "var(--ink-3)" }}>This can take up to ~30s. You’ll see the files as soon as it’s done.</p>}
           </div>
         )}
 
@@ -854,30 +853,8 @@ export default function ProjectBuilder({
             <ModelPicker
               value={modelId}
               onChange={setModelId}
-              balance={balance}
               readiness={readiness}
             />
-            {freeTokens > 0 ? (
-              <button
-                type="button"
-                className="chip"
-                onClick={() => setUseFreeTokens((v) => !v)}
-                aria-pressed={useFreeTokens}
-                title={
-                  useFreeTokens
-                    ? "Hosted runs are paid from your free-token wallet first."
-                    : "Free-token wallet off — hosted runs bill credits."
-                }
-              >
-                <Wallet size={13} aria-hidden="true" />
-                <span className="mono">{freeTokens.toLocaleString()}</span>
-                <span className="hidden sm:inline">free</span>
-              </button>
-            ) : freeTokens === 0 && currentModel.tier === "credits" ? (
-              <Link href="/agent/settings" className="chip" title="Buy credits in Settings">
-                Buy credits
-              </Link>
-            ) : null}
             <button type="submit" className="btn btn-primary btn-sm ml-auto" disabled={busy || !prompt.trim()}>
               {workingLabel()}
             </button>

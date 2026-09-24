@@ -72,6 +72,7 @@ export default function HomeComposer({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+  const [log, setLog] = useState<string[]>([]);
   const autoRanRef = useRef(false);
 
   useEffect(() => {
@@ -119,26 +120,74 @@ export default function HomeComposer({
     if (t) choose(t);
   }
 
+  async function readStream(res: Response, projectId: string, onDone: (data: { ok: boolean; error?: string; notice?: string; usedFallback?: boolean }) => void): Promise<void> {
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("No stream");
+    const decoder = new TextDecoder();
+    let buf = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() ?? "";
+      for (const part of parts) {
+        const line = part.trim().split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        try {
+          const msg = JSON.parse(line.slice(6)) as { type: string; message?: string; error?: string; notice?: string; usedFallback?: boolean; ok?: boolean };
+          if (msg.type === "status" || msg.type === "heartbeat") {
+            if (msg.message) { setStatus(msg.message); setLog((p) => [...p.slice(-18), msg.message!]); }
+          } else if (msg.type === "error") {
+            onDone({ ok: false, error: msg.error, notice: msg.notice });
+            return;
+          } else if (msg.type === "done") {
+            onDone(msg as unknown as { ok: boolean; error?: string; notice?: string; usedFallback?: boolean });
+            return;
+          }
+        } catch {}
+      }
+    }
+  }
+
   async function submit(text: string) {
     if (!text.trim() || busy) return;
     setBusy(true);
     setError("");
+    setLog([]);
     setStatus("Creating project…");
+    setLog(["Creating project…"]);
     try {
       const created = await fetch("/api/app/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: nameFromPrompt(prompt) }),
+        body: JSON.stringify({ name: nameFromPrompt(text) }),
       });
       const createdData = (await created.json()) as { ok: boolean; project?: { id: string }; error?: string };
       if (!created.ok || !createdData.ok || !createdData.project) throw new Error(createdData.error ?? "Could not create the project.");
       const projectId = createdData.project.id;
       setStatus(mode === "Plan" ? "Planning…" : "Agent is building…");
-      const run = await fetch(`/api/app/projects/${projectId}/prompt`, {
+      setLog((p) => [...p, mode === "Plan" ? "Planning…" : "Agent is building…"]);
+      const run = await fetch(`/api/app/projects/${projectId}/prompt/stream`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ prompt: text, modelId }),
       });
+      if (run.headers.get("content-type")?.includes("text/event-stream")) {
+        await readStream(run, projectId, (runData) => {
+          if (!runData.ok) {
+            router.push(`/agent/projects/${projectId}?error=${encodeURIComponent(runData.error ?? "agent failed")}`);
+            router.refresh();
+            return;
+          }
+          const params = new URLSearchParams();
+          if (runData.usedFallback) params.set("fallback", "1");
+          if (runData.notice) params.set("notice", runData.notice);
+          router.push(`/agent/projects/${projectId}${params.size ? `?${params}` : ""}`);
+          router.refresh();
+        });
+        return;
+      }
       const runData = (await run.json()) as { ok: boolean; error?: string; notice?: string; usedFallback?: boolean };
       if (!run.ok || !runData.ok) {
         router.push(`/agent/projects/${projectId}?error=${encodeURIComponent(runData.error ?? "agent failed")}`);
@@ -198,6 +247,14 @@ export default function HomeComposer({
         </div>
       </div>
       <p aria-live="polite" className="notice-reveal mt-3 min-h-[22px] text-center text-[13px]" style={{ color: error ? "var(--accent)" : "var(--ink-2)" }}>{error || status || "\u00A0"}</p>
+      {busy && log.length > 0 && (
+        <div className="mx-auto mt-3 w-full max-w-[720px] rounded-xl p-3 text-left" style={{ background: "var(--bg-inset)", border: "1px solid var(--hairline)" }}>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>Progress</p>
+          <ul className="mono space-y-0.5 text-[12.5px] leading-relaxed" style={{ color: "var(--ink-2)" }}>
+            {log.map((m, i) => (<li key={i}>› {m}</li>))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

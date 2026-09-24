@@ -35,7 +35,9 @@ export async function GET(req: Request) {
     });
 
     const token = await createSession(user.id);
-    const res = NextResponse.redirect(new URL("/agent", env.siteUrl));
+    const returnTo = store.get("return_to")?.value;
+    const safeReturn = returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/agent";
+    const res = NextResponse.redirect(new URL(safeReturn, env.siteUrl));
     res.cookies.set(SESSION_COOKIE, token, {
       httpOnly: true,
       sameSite: "lax",
@@ -44,6 +46,7 @@ export async function GET(req: Request) {
       secure: process.env.NODE_ENV === "production",
     });
     res.cookies.set("oauth_state", "", { maxAge: 0, path: "/" });
+    res.cookies.set("return_to", "", { maxAge: 0, path: "/" });
     return res;
   } catch (err) {
     console.error("google callback failed:", err);

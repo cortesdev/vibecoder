@@ -126,13 +126,13 @@ function readinessOf(
 export default function ModelPicker({
   value,
   onChange,
-  balance,
+  balance = 0,
   align = "left",
   readiness = [],
 }: {
   value: string;
   onChange: (id: string) => void;
-  balance: number;
+  balance?: number;
   align?: "left" | "right";
   readiness?: ModelReadiness[];
 }) {
