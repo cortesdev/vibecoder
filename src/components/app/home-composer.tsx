@@ -104,13 +104,15 @@ export default function HomeComposer({
   balance,
   freeTokens: initialFreeTokens,
   readiness = [],
+  initialPrompt = "",
 }: {
   balance: number;
   freeTokens: number;
   readiness?: ModelReadiness[];
+  initialPrompt?: string;
 }) {
   const router = useRouter();
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [mode, setMode] = useState<(typeof MODE_CHIPS)[number]>("Build");
   const [busy, setBusy] = useState(false);
@@ -354,7 +356,13 @@ export default function HomeComposer({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              startNarrowing();
+              if (initialPrompt) {
+                // Landing prefill: user already described it — answer directly,
+                // skip the narrowing interview.
+                if (!busy) void submit(prompt);
+              } else {
+                startNarrowing();
+              }
             }
           }}
           disabled={busy}

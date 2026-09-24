@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import SiteNav from "@/components/site-nav";
 import GlobeBackground from "@/components/globe-background";
-import TerminalWindow from "@/components/terminal-window";
+import TerminalChat from "@/components/app/terminal-chat";
 import DownloadButtons from "@/components/download-buttons";
 import UpgradeCard from "@/components/upgrade-card";
 import { testEnabled } from "@/lib/env";
@@ -149,7 +149,7 @@ export default function Home() {
 
         {/* Terminal window */}
         <section className="mx-auto max-w-[880px] px-6 pb-24">
-          <TerminalWindow />
+          <TerminalChat />
           <p className="muted-3 mt-4 text-center text-[13px]">
             One session, one repo: plan → build → review → undo.
           </p>
