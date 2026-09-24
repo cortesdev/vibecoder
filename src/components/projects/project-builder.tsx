@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createTwoFilesPatch } from "diff";
-import { File, FileCode, FolderOpen, Globe, Palette, Paperclip, Plug, Send, X } from "lucide-react";
+import { File, FileCode, FolderOpen, Globe, Palette, Paperclip, PanelRightClose, PanelRightOpen, Plug, Send, X } from "lucide-react";
 import FileEditor from "./editor";
 import ModelPicker from "@/components/app/model-picker";
 import PreviewPane from "./preview-pane";
@@ -154,7 +154,7 @@ export default function ProjectBuilder({
   const boxRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
-  const [toolsOpen] = useState(true);
+  const [toolsOpen, setToolsOpen] = useState(true);
   const [toolTab, setToolTab] = useState<ToolTab>("preview");
   const autoSentRef = useRef(false);
 
@@ -453,6 +453,22 @@ export default function ProjectBuilder({
     <div className="flex min-w-0 flex-1" style={{ alignItems: "stretch" }}>
       {/* Chat thread */}
       <aside aria-label="Chat" className="card flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div
+          className="flex shrink-0 items-center justify-between gap-3 px-3 py-2"
+          style={{ borderBottom: "1px solid var(--hairline)" }}
+        >
+          <h2 className="text-[13px] font-semibold">Chat</h2>
+          <button
+            type="button"
+            className="chip"
+            aria-label={toolsOpen ? "Hide workspace panel" : "Show workspace panel"}
+            aria-pressed={toolsOpen}
+            title={toolsOpen ? "Hide the files / preview panel" : "Show the files / preview panel"}
+            onClick={() => setToolsOpen((o) => !o)}
+          >
+            {toolsOpen ? <PanelRightClose size={14} aria-hidden="true" /> : <PanelRightOpen size={14} aria-hidden="true" />}
+          </button>
+        </div>
         {errorNotice && (
           <div className="mx-3 mt-2 rounded-lg px-3 py-2 text-[13px]" style={{ background: "var(--bg-inset)", color: "var(--accent)" }} role="alert">
             {errorNotice}{" "}
