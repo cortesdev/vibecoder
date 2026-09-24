@@ -230,6 +230,33 @@ describe("runModelPrompt — the free model chain", () => {
     expect(mocks.debitForRun).not.toHaveBeenCalled();
   });
 
+  it("falls through to another free model when the first one fails at runtime", async () => {
+    process.env.GEMINI_API_KEY = "gemini-test-key";
+    process.env.ZAI_API_KEY = "zai-test-key";
+    let calls = 0;
+
+    const outcome = await runModelPrompt({
+      userId: "u1",
+      projectId: "p1",
+      modelId: "gemini-flash",
+      prompt: "build",
+      files: {},
+      run: async () => {
+        calls += 1;
+        // The first free model (Gemini) hits the 503 surge we saw in prod;
+        // the fallback (GLM) answers.
+        if (calls === 1) throw new Error("This model is currently experiencing high demand.");
+        return { edits: [], usage: USAGE };
+      },
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(outcome.modelId).toBe("glm-flash");
+    expect(outcome.notice).toContain("Gemini Flash");
+    expect(calls).toBe(2); // gemini attempted, then glm
+    expect(mocks.debitForRun).not.toHaveBeenCalled();
+  });
+
   it("honours a per-model id override so a rotated upstream id is an env change", async () => {
     process.env.ZAI_API_KEY = "zai-test-key";
     process.env.VIBECODER_MODEL_GLM_FLASH = "glm-9.9-flash";

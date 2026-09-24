@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SiteNav from "@/components/site-nav";
+import GlobeBackground from "@/components/globe-background";
 import TerminalWindow from "@/components/terminal-window";
 import DownloadButtons from "@/components/download-buttons";
 import UpgradeCard from "@/components/upgrade-card";
@@ -118,26 +119,31 @@ export default function Home() {
       <SiteNav />
       <main id="main">
         {/* Hero */}
-        <section className="mx-auto max-w-[1100px] px-6 pb-20 pt-20 text-center">
-          <p className="hero-rise eyebrow" style={{ "--i": 0 } as React.CSSProperties}>
-            Free · open source · MIT
-          </p>
-          <h1
-            className="display hero-rise mx-auto mt-4 max-w-[840px]"
-            style={{ "--i": 1 } as React.CSSProperties}
-          >
-            The AI coding agent that lives on your desktop.
-          </h1>
-          <p
-            className="hero-rise muted mx-auto mt-5 max-w-[620px] text-[19px]"
-            style={{ "--i": 2 } as React.CSSProperties}
-          >
-            Vibecoder reads your code, plans the change, and edits your project
-            while you watch every diff. No subscription. No credits. Your API
-            keys, your machine, your code.
-          </p>
-          <div className="hero-rise mt-8" style={{ "--i": 3 } as React.CSSProperties}>
-            <DownloadButtons variant="hero" />
+        <section className="relative isolate overflow-hidden text-center">
+          {/* Three.js globe — behind the copy, 40% transparent (dots at 0.6),
+              fading from visible up top to 0% going down. */}
+          <GlobeBackground className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[170vmin] w-[170vmin] max-w-none -translate-x-1/2 -translate-y-1/2 [mask-image:linear-gradient(to_bottom,black_0%,black_35%,transparent_85%)]" />
+          <div className="relative z-10 mx-auto max-w-[1100px] px-6 pb-20 pt-20 text-center">
+            <p className="hero-rise eyebrow" style={{ "--i": 0 } as React.CSSProperties}>
+              Free · open source · MIT
+            </p>
+            <h1
+              className="display hero-rise mx-auto mt-4 max-w-[840px]"
+              style={{ "--i": 1 } as React.CSSProperties}
+            >
+              The AI coding agent that lives on your desktop.
+            </h1>
+            <p
+              className="hero-rise muted mx-auto mt-5 max-w-[620px] text-[19px]"
+              style={{ "--i": 2 } as React.CSSProperties}
+            >
+              Vibecoder reads your code, plans the change, and edits your project
+              while you watch every diff. No subscription. No credits. Your API
+              keys, your machine, your code.
+            </p>
+            <div className="hero-rise mt-8" style={{ "--i": 3 } as React.CSSProperties}>
+              <DownloadButtons variant="hero" />
+            </div>
           </div>
         </section>
 

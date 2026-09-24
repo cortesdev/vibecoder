@@ -176,30 +176,62 @@ async function resolveAgent(
 
 /**
  * Walk the free models starting with the one the user picked and run the first
- * one that actually has an agent — their own key, else the platform's. A free
- * model list is a menu, not a single point of failure: the first prompt should
- * answer whichever free provider is configured instead of dead-ending.
+ * one that actually answers — their own key, else the platform's. A free model
+ * list is a menu, not a single point of failure: a provider that is 403/429/503
+ * at runtime (free tiers get busy) falls through to the next free model, so the
+ * first prompt answers whichever free provider is actually serving instead of
+ * dead-ending on the first one that fails.
  */
-async function resolveFreeAgent(
+type FreeRun = (agent: Agent) => Promise<import("./agent/types").AgentResult>;
+
+async function runFreeAnswer(
   userId: string,
   requested: ModelDef,
-): Promise<{ agent: Agent | null; model: ModelDef; problem?: string }> {
+  run: FreeRun,
+  usedFallback = false,
+): Promise<RunOutcome & { model: ModelDef; swapped: string }> {
   const chain = [requested, ...freeModels().filter((m) => m.id !== requested.id)];
-  const withoutKeys: string[] = [];
+  const failures: string[] = [];
   for (const candidate of chain) {
     const { agent } = await resolveAgent(userId, candidate);
-    if (agent) return { agent, model: candidate };
-    withoutKeys.push(candidate.label);
+    if (!agent) {
+      failures.push(`${candidate.label} (no key)`);
+      continue;
+    }
+    try {
+      const { edits, usage } = await run(agent);
+      const swapped =
+        candidate.id === requested.id
+          ? ""
+          : usedFallback
+            ? `You're out of credits, so this ran on ${candidate.label} (free). Buy credits in Settings to use ${requested.label} again.`
+            : `${requested.label} was unavailable, so this ran on ${candidate.label} instead (also free).`;
+      // Only a completed free run starts the cooldown — a refusal that never
+      // got an answer must not cost the user their next free turn.
+      await startFreeCooldown(userId);
+      return {
+        ok: true,
+        edits,
+        usage,
+        modelId: candidate.id,
+        modelLabel: candidate.label,
+        ...(usedFallback ? { usedFallback: true } : {}),
+        notice: swapped || undefined,
+        model: candidate,
+        swapped,
+      };
+    } catch (err) {
+      failures.push(`${candidate.label} (${err instanceof Error ? err.message : "failed"})`);
+    }
   }
   const needs = chain
     .map((m) => `${m.label} → ${PROVIDER_META[m.provider].label} key in Settings → API keys, or set ${keyEnvNames(m)}`)
     .join("; ");
   return {
-    agent: null,
+    ok: false,
     model: requested,
-    problem: `No free model is configured yet (tried ${withoutKeys.join(
-      ", ",
-    )}). ${needs}. Both providers have a $0 tier — a free Z.ai key from z.ai or a Google AI Studio key is enough, and no paid plan is involved.`,
+    swapped: "",
+    error: `No free model answered (tried: ${failures.join("; ") || "none"}). ${needs}. Both providers have a $0 tier — a free Z.ai key from z.ai or a Google AI Studio key is enough, and no paid plan is involved.`,
   };
 }
 
@@ -233,26 +265,12 @@ export async function runModelPrompt(input: {
   if (model.tier === "free") {
     const cooldownMs = await freeCooldownMs(input.userId);
     if (cooldownMs > 0) return { ok: false, error: cooldownMessage(cooldownMs), cooldownMs };
-    const { agent, model: ran, problem } = await resolveFreeAgent(input.userId, model);
-    if (!agent) return { ok: false, error: problem };
     try {
-      const { edits, usage } = await input.run(agent);
-      // Only a completed free run starts the cooldown — a refusal that never
-      // got an answer must not cost the user their next free turn.
-      await startFreeCooldown(input.userId);
-      const swapped = ran.id === model.id ? "" : `${model.label} has no key on this account yet, so this ran on ${ran.label} instead (also free).`;
-      return {
-        ok: true,
-        edits,
-        usage,
-        modelId: ran.id,
-        modelLabel: ran.label,
-        notice: swapped || undefined,
-      };
+      return await runFreeAnswer(input.userId, model, input.run);
     } catch (err) {
       return {
         ok: false,
-        error: err instanceof Error ? err.message : `${ran.label} failed`,
+        error: err instanceof Error ? err.message : `${model.label} failed`,
       };
     }
   }
@@ -336,24 +354,8 @@ export async function runModelPrompt(input: {
 
   if (!debited) {
     const fallback = getModel(FREE_FALLBACK_ID)!;
-    const { agent, model: fb, problem } = await resolveFreeAgent(input.userId, fallback);
-    if (!agent) {
-      return {
-        ok: false,
-        error: `Out of credits — buy more in Settings. ${problem ?? ""}`.trim(),
-      };
-    }
     try {
-      const { edits, usage } = await input.run(agent);
-      return {
-        ok: true,
-        edits,
-        usage,
-        modelId: fb.id,
-        modelLabel: fb.label,
-        usedFallback: true,
-        notice: `You're out of credits, so this ran on ${fb.label} (free). Buy credits in Settings to use ${model.label} again.`,
-      };
+      return await runFreeAnswer(input.userId, fallback, input.run, true);
     } catch (err) {
       return {
         ok: false,
