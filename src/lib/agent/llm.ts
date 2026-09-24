@@ -43,11 +43,11 @@ export function llmConfigFromEnv(env: Record<string, string | undefined> = proce
 // both slow and unbounded in cost. The default is deliberately above the
 // working floor — too low a cap returns empty content, not an error.
 //
-// Input: a prompt pasted from another AI can be far larger than the project it
-// asks for, and the whole project is re-sent every turn. Files are therefore
-// offered most-relevant-first inside a character budget.
+// Input: the whole project is re-sent on every turn, so its size is what decides
+// what a run costs. Every file is always sent — an agent that cannot see a file
+// cannot edit it correctly, and dropping files trades a token saving for silent
+// wrong answers — but each file goes out compacted.
 export const DEFAULT_MAX_OUTPUT_TOKENS = 2500;
-export const DEFAULT_MAX_INPUT_CHARS = 48_000;
 
 /** Cap on how many files one reply may rewrite — more than this is not a diff
  *  anyone reviews. */
@@ -63,14 +63,55 @@ export function outputTokenBudget(config: Pick<LlmConfig, "maxOutputTokens">): n
   return config.maxOutputTokens ?? positiveEnv("VIBECODER_MAX_OUTPUT_TOKENS", DEFAULT_MAX_OUTPUT_TOKENS);
 }
 
-function maxInputChars(): number {
-  return positiveEnv("VIBECODER_MAX_INPUT_CHARS", DEFAULT_MAX_INPUT_CHARS);
+/** Which files may be compacted. Code and CSS carry whole-line comments worth
+ *  dropping; JSON and HTML do not, and rewriting their bytes buys nothing. */
+const COMPACTABLE = /\.(?:[cm]?[jt]sx?|css)$/i;
+
+/**
+ * Strip whole-line comments, blank lines and trailing whitespace. Only comments
+ * that occupy a line of their own are removed — never an inline comment — so a
+ * line-comment marker inside a string, a JSX comment child, or a URL survives
+ * untouched.
+ *
+ * This changes the bytes, which is why the edit matcher compares against the
+ * compacted view (see normalizeForMatch) and still records the real file as
+ * `before`, so /undo restores the original.
+ */
+export function compactSource(text: string, path: string): string {
+  if (!COMPACTABLE.test(path)) return text;
+  const out: string[] = [];
+  let inBlock = false;
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const trimmed = line.trim();
+    if (inBlock) {
+      const end = trimmed.indexOf("*/");
+      if (end === -1) continue;
+      inBlock = false;
+      const rest = line.slice(line.indexOf("*/") + 2).trimEnd();
+      if (rest.trim()) out.push(rest);
+      continue;
+    }
+    if (trimmed.startsWith("/*")) {
+      const end = trimmed.indexOf("*/", 2);
+      if (end === -1) {
+        inBlock = true;
+        continue;
+      }
+      const rest = trimmed.slice(end + 2).trim();
+      if (rest) out.push(rest);
+      continue;
+    }
+    if (trimmed === "" || trimmed.startsWith("//")) continue;
+    out.push(line.trimEnd());
+  }
+  return out.join("\n");
 }
 
 /**
  * How much a file matters to this prompt. Files the prompt names outrank
  * everything; the render path (`index.html`, anything under `src/`) outranks the
  * build config, which is almost never what a "build me a website" ask rewrites.
+ * This decides reading order only — every file is included either way.
  */
 function relevance(path: string, prompt: string): number {
   const base = path.slice(path.lastIndexOf("/") + 1);
@@ -82,31 +123,24 @@ function relevance(path: string, prompt: string): number {
 }
 
 /**
- * Files ordered by relevance and packed into the character budget. Whatever
- * does not fit is named but not included, so the model still knows it exists
- * without paying for its contents.
+ * The whole app in context: every file, always, each one compacted. Ordering
+ * puts the files the prompt names first, then the render path, so the model
+ * reads what matters before the build config.
  */
-function buildFileList(
-  files: Files,
-  prompt: string,
-  budget: number,
-): { text: string; omitted: string[] } {
-  const ordered = Object.keys(files).sort(
-    (a, b) => relevance(b, prompt) - relevance(a, prompt) || a.localeCompare(b),
-  );
-  const parts: string[] = [];
-  const omitted: string[] = [];
-  let used = 0;
-  for (const path of ordered) {
-    const block = `\n--- ${path} ---\n${files[path]}`;
-    if (used + block.length > budget) {
-      omitted.push(path);
-      continue;
-    }
-    used += block.length;
-    parts.push(block);
-  }
-  return { text: parts.join(""), omitted };
+function buildFileList(files: Files, prompt: string): string {
+  return Object.keys(files)
+    .sort((a, b) => relevance(b, prompt) - relevance(a, prompt) || a.localeCompare(b))
+    .map((path) => `\n--- ${path} ---\n${compactSource(files[path], path)}`)
+    .join("");
+}
+
+/**
+ * Tolerant comparison for the `before` a model echoes back. The prompt carried a
+ * compacted view, and a model may also retab or re-indent, so a whitespace-only
+ * difference must not throw away an otherwise correct edit.
+ */
+function normalizeForMatch(text: string): string {
+  return text.replace(/\r\n?/g, "\n").replace(/[ \t]+$/gm, "").trim();
 }
 
 // A bare "responded 403" names neither who refused nor what to do about it.
@@ -273,11 +307,8 @@ export class LlmAgent implements Agent {
   constructor(private config: LlmConfig) {}
 
   async run(prompt: string, files: Files): Promise<AgentResult> {
-    const { text: fileList, omitted } = buildFileList(files, prompt, maxInputChars());
-    const omittedNote = omitted.length
-      ? `\n\n(Omitted to stay within the context budget — ask for one of these by name if it needs to change: ${omitted.join(", ")})`
-      : "";
-    const userMessage = `Project files:${fileList || "\n(empty project)\n"}${omittedNote}\n\nUser prompt: ${prompt}`;
+    const fileList = buildFileList(files, prompt);
+    const userMessage = `Project files:${fileList || "\n(empty project)\n"}\n\nUser prompt: ${prompt}`;
 
     const cap = outputTokenBudget(this.config);
     const data = (await requestCompletion(this.config, JSON.stringify({
@@ -321,11 +352,21 @@ export class LlmAgent implements Agent {
       }
       throw err;
     }
-    const matched = parsed.filter((edit) => edit.before === (files[edit.path] ?? ""));
+    // The model saw the compacted view, so match against that — but record the
+    // real file content as `before`, so a revert restores the original bytes.
+    const matched = parsed
+      .map((edit) => ({ edit, raw: files[edit.path] ?? "" }))
+      .filter(({ edit, raw }) => {
+        if (!(edit.path in files)) return edit.before === "";
+        return normalizeForMatch(edit.before) === normalizeForMatch(compactSource(raw, edit.path));
+      })
+      .filter(({ edit, raw }) => edit.after !== compactSource(raw, edit.path));
     if (matched.length === 0) {
       throw new Error("The model returned no usable changes. Please try a more specific request.");
     }
-    const edits = matched.slice(0, MAX_EDITS_PER_RUN);
+    const edits = matched
+      .slice(0, MAX_EDITS_PER_RUN)
+      .map(({ edit, raw }) => ({ ...edit, before: raw }));
     const usage = data.usage?.total_tokens
       ? {
           inputTokens: data.usage.prompt_tokens ?? 0,

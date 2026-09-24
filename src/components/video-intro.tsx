@@ -80,6 +80,8 @@ export default function VideoIntro({ videoId = VIDEO_INTRO_ID }: { videoId?: str
   const dismiss = useCallback(() => {
     if (exitedRef.current) return;
     exitedRef.current = true;
+    // Only start the exit animation here. `setGone` fires when the animation
+    // completes (in the exiting effect below) — unmounting here would skip it.
     setPhase("exiting");
   }, []);
 
@@ -89,10 +91,13 @@ export default function VideoIntro({ videoId = VIDEO_INTRO_ID }: { videoId?: str
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
+    // Hard cap on how long the mask may hold the page: even if the video never
+    // ends or never loads, the intro cannot trap the visitor past 10 seconds.
+    const autoTimer = window.setTimeout(dismiss, 10_000);
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") dismiss();
     };
-    // The embed posts JSON messages; info===0 is the ENDED state.
     const onMessage = (e: MessageEvent) => {
       if (typeof e.data !== "string") return;
       try {
@@ -105,20 +110,27 @@ export default function VideoIntro({ videoId = VIDEO_INTRO_ID }: { videoId?: str
     window.addEventListener("keydown", onKey);
     window.addEventListener("message", onMessage);
     return () => {
+      window.clearTimeout(autoTimer);
       document.body.style.overflow = prevOverflow;
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("message", onMessage);
     };
   }, [gone, dismiss]);
 
-  // Keep the 16:9 embed covering the viewport at any aspect ratio.
+  // Keep the video covering the viewport at any aspect ratio. The source swaps
+  // between landscape (16:9) on desktop and portrait (9:16) on mobile, so the
+  // cover math has to swap with it.
   useEffect(() => {
     const measure = () => {
       const el = panelRef.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) {
-        setCoverScale(Math.max(1, (r.height * 16) / (r.width * 9)));
+        const portrait = window.matchMedia("(max-width: 768px)").matches;
+        const scale = portrait
+          ? Math.max(1, (r.width * 16) / (r.height * 9))
+          : Math.max(1, (r.height * 16) / (r.width * 9));
+        setCoverScale(scale);
       }
     };
     measure();
@@ -156,7 +168,7 @@ export default function VideoIntro({ videoId = VIDEO_INTRO_ID }: { videoId?: str
     };
     if (typeof requestAnimationFrame === "function") raf = requestAnimationFrame(tick);
 
-    const timer = window.setTimeout(() => setGone(true), duration + 80);
+    const timer = window.setTimeout(() => setGone(true), duration);
     return () => {
       if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(raf);
       window.clearTimeout(timer);
@@ -170,53 +182,72 @@ export default function VideoIntro({ videoId = VIDEO_INTRO_ID }: { videoId?: str
       role="dialog"
       aria-modal="true"
       aria-label="Vibecoder intro video"
-      className="fixed inset-0 z-[200] select-none overflow-hidden bg-[var(--bg)] text-white"
-      onClick={dismiss}
+      className="fixed inset-0 z-[200] select-none overflow-hidden "
     >
       <div ref={panelRef} className="absolute inset-0 will-change-transform">
-        {/* Autoplaying YouTube promo inside the mask */}
-        <iframe
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&playsinline=1&controls=0&loop=1&playlist=${videoId}&modestbranding=1&rel=0&iv_load_policy=3&enablejsapi=1`}
+        {/* Autoplaying promo videos inside the mask — landscape on desktop,
+            portrait on mobile, per the <source> media queries below */}
+        <video
           className="pointer-events-none absolute left-1/2 top-1/2"
+          autoPlay
+          muted
+          playsInline
+          poster=""
+          onEnded={dismiss}
           style={{
             width: "100%",
             aspectRatio: "16 / 9",
             transform: `translate(-50%, -50%) scale(${coverScale})`,
+            pointerEvents: "none",
           }}
-          allow="autoplay; encrypted-media; fullscreen"
-          title="Vibecoder intro video"
-          tabIndex={-1}
-          aria-hidden="true"
-        />
+        >
+          <source
+            src="https://ik.imagekit.io/17xxw7xjq/videos/vibecoder-promo-landscape.webm?updatedAt=1790252675645"
+            type="video/webm"
+            media="(min-width: 769px)"
+          />
+          <source
+            src="https://ik.imagekit.io/17xxw7xjq/videos/vibecoder-promo-vertical%20(1).webm?updatedAt=1790253969107"
+            type="video/webm"
+            media="(max-width: 768px)"
+          />
+        </video>
 
         {/* Home mask: frosted dot-mask glass over the video (maloca hero panel) */}
         <div
           className="pointer-events-none absolute inset-0"
-          style={{
-            backdropFilter: "blur(12px) saturate(135%)",
-            WebkitBackdropFilter: "blur(12px) saturate(135%)",
-            WebkitMask:
-              "repeating-radial-gradient(circle at 50% 50%, black 0, black 2px, rgba(0,0,0,0) 2px, rgba(0,0,0,0) 4px)",
-            mask: "repeating-radial-gradient(circle at 50% 50%, black 0, black 2px, rgba(0,0,0,0) 2px, rgba(0,0,0,0) 4px)",
-            opacity: 0.55,
-          }}
+          // style={{
+          //   backdropFilter: "blur(12px) saturate(135%)",
+          //   WebkitBackdropFilter: "blur(12px) saturate(135%)",
+          //   WebkitMask:
+          //     "repeating-radial-gradient(circle at 50% 50%, black 0, black 2px, rgba(0,0,0,0) 2px, rgba(0,0,0,0) 4px)",
+          //   mask: "repeating-radial-gradient(circle at 50% 50%, black 0, black 2px, rgba(0,0,0,0) 2px, rgba(0,0,0,0) 4px)",
+          //   opacity: 0.55,
+          // }}
         />
 
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+        {/* <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
           <p className="eyebrow">Free · open source · MIT</p>
           <p className="display mt-3 max-w-[820px]">
             The AI coding agent that lives on your desktop.
           </p>
-        </div>
+        </div> */}
       </div>
+
+      {/* Clickable overlay for dismiss - covers entire screen */}
+      <div
+        className="absolute inset-0 z-20"
+        onClick={dismiss}
+        style={{ cursor: "pointer" }}
+      />
 
       {/* Chrome that stays fixed while the panel peels away */}
-      <div className="absolute left-6 top-6 z-10 flex items-center gap-2">
+      {/* <div className="absolute left-6 top-6 z-30 flex items-center gap-2">
         <Image src="/vibe-logo.png" alt="" width={20} height={20} className="rounded-[5px]" priority />
         <span className="text-[17px] font-bold tracking-[-0.02em]">vibecoder</span>
-      </div>
+      </div> */}
 
-      <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-between gap-4 px-6 pb-8">
+      <div className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-between gap-4 px-6 pb-8">
         <span className="hidden text-[11px] uppercase tracking-[0.18em] text-white/45 sm:block">
           The intro ends on its own — or skip with a click / Esc
         </span>
