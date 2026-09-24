@@ -1,8 +1,6 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
-import { getBalance, ensureWallet } from "@/lib/credits";
-import { ensureFreeWallet, getFreeBalance } from "@/lib/freewallet";
 import { checkFreeReadiness } from "@/lib/readiness";
 import HomeComposer from "@/components/app/home-composer";
 import { FolderOpen } from "lucide-react";
@@ -14,17 +12,17 @@ function greeting(): string {
   return "Good evening";
 }
 
-export default async function AppHomePage() {
+export default async function AppHomePage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const sp = (await searchParams) ?? {};
+  const rawInitial = typeof sp.prompt === "string" ? sp.prompt : Array.isArray(sp.prompt) ? sp.prompt[0] : "";
+  const initialPrompt = rawInitial.slice(0, 4000);
+
   const user = await currentUser();
-  const [balance, freeTokens, readiness] = user
-    ? await Promise.all([
-        ensureWallet(user.id).then(() => getBalance(user.id)),
-        ensureFreeWallet(user.id).then(() => getFreeBalance(user.id)),
-        // Whether the free models can actually answer — shown on the picker
-        // before the user types anything. Cached briefly in readiness.ts.
-        checkFreeReadiness(user.id),
-      ])
-    : [0, 0, []];
+  const readiness = user ? await checkFreeReadiness(user.id) : [];
   const projects = user
     ? await db.project.findMany({
         where: { userId: user.id },
@@ -49,11 +47,11 @@ export default async function AppHomePage() {
         className="hero-rise muted mt-2 text-center text-[15px]"
         style={{ "--i": 2 } as React.CSSProperties}
       >
-        Describe something to build — the agent creates the project and starts on it right away.
+        Describe something to build — pick a model, hit enter, it builds right away.
       </p>
 
       <div className="hero-rise mt-8 w-full" style={{ "--i": 3 } as React.CSSProperties}>
-        <HomeComposer balance={balance} freeTokens={freeTokens} readiness={readiness} />
+        <HomeComposer readiness={readiness} initialPrompt={initialPrompt} />
       </div>
 
       {projects.length > 0 && (
