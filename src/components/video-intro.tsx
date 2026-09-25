@@ -65,7 +65,7 @@ export default function VideoIntro() {
 
   const panelRef = useRef<HTMLDivElement>(null);
   const bandPathRef = useRef<SVGPathElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const exitedRef = useRef(false);
   const reducedRef = useRef(false);
 
@@ -79,12 +79,6 @@ export default function VideoIntro() {
   const dismiss = useCallback(() => {
     if (exitedRef.current) return;
     exitedRef.current = true;
-    // Stop playback before the panel lifts — otherwise the promo keeps
-    // playing (and looping) behind the reveal for its last second.
-    const video = videoRef.current;
-    if (video) {
-      video.pause();
-    }
     // Only start the exit animation here. `setGone` fires when the animation
     // completes (in the exiting effect below) — unmounting here would skip it.
     setPhase("exiting");
@@ -103,22 +97,11 @@ export default function VideoIntro() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") dismiss();
     };
-    const onMessage = (e: MessageEvent) => {
-      if (typeof e.data !== "string") return;
-      try {
-        const msg = JSON.parse(e.data);
-        if (msg.event === "onStateChange" && msg.info === 0) dismiss();
-      } catch {
-        // non-YouTube message
-      }
-    };
     window.addEventListener("keydown", onKey);
-    window.addEventListener("message", onMessage);
     return () => {
       window.clearTimeout(autoTimer);
       document.body.style.overflow = prevOverflow;
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("message", onMessage);
     };
   }, [gone, dismiss]);
 
@@ -159,6 +142,13 @@ export default function VideoIntro() {
     };
   }, [phase]);
 
+  // Dispatch event when fully gone so page can animate content up
+  useEffect(() => {
+    if (gone) {
+      window.dispatchEvent(new CustomEvent('vibecoder:intro-done'));
+    }
+  }, [gone]);
+
   if (gone) return null;
 
   return (
@@ -173,29 +163,13 @@ export default function VideoIntro() {
             portrait on mobile, per the <source> media queries below. The
             element is full-bleed with object-fit: cover, so whichever source
             the browser picks crops to fill the screen with no letterboxing. */}
-        <video
-          ref={videoRef}
-          className="pointer-events-none absolute inset-0 h-full w-full"
-          autoPlay
-          muted
-          playsInline
-          poster=""
-          onEnded={dismiss}
+        <iframe
+          ref={iframeRef}
+          src="/animation.html"
+          className="pointer-events-none absolute inset-0 h-full w-full border-0"
           style={{ objectFit: "cover" as const }}
-        >
-          <source
-            src="https://ik.imagekit.io/17xxw7xjq/videos/vibecoder-promo-landscape.webm?updatedAt=1790252675645"
-            type="video/webm"
-            // Tablets included: only true phones (portrait-width) get the
-            // vertical cut, everything wider gets landscape.
-            media="(min-width: 481px)"
-          />
-          <source
-            src="https://ik.imagekit.io/17xxw7xjq/videos/vibecoder-promo-vertical%20(1).webm?updatedAt=1790253969107"
-            type="video/webm"
-            media="(max-width: 480px)"
-          />
-        </video>
+          allow="autoplay"
+        />
 
         {/* Home mask: frosted dot-mask glass over the video (maloca hero panel) */}
         <div
