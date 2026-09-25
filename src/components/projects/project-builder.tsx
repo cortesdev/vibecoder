@@ -168,6 +168,17 @@ export default function ProjectBuilder({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPrompt, busy]);
 
+  // Listen for build requests from the preview iframe
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.data?.type === "vibecoder:build" && !busy && projectId) {
+        void send(undefined, "Build the complete file structure for this project. Create all necessary files based on the current project state and any requirements discussed.");
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, [busy, projectId]);
+
   const filesByPath = useMemo(() => Object.fromEntries(files.map((f) => [f.path, f.content])), [files]);
 
   // Keep the thread scrolled to the latest message.
@@ -478,7 +489,7 @@ export default function ProjectBuilder({
           </div>
         )}
 
-        <div ref={threadRef} className="flex-1 min-h-0 space-y-3 p-4" style={{ maxHeight: "58vh", overflowY: "scroll" }} aria-live="polite">
+        <div ref={threadRef} className="flex-1 min-h-0 space-y-3 p-4" style={{ maxHeight: "71vh", overflowY: "scroll" }} aria-live="polite">
           {messages.length === 0 && !busy && (
             <div className="px-1 pt-10 text-center">
               <p className="text-[14px] font-semibold">Talk to your agent.</p>
@@ -707,7 +718,7 @@ export default function ProjectBuilder({
               </div>
             </div>
           ) : toolTab === "preview" ? (
-            <PreviewPane files={filesByPath} />
+            <PreviewPane files={filesByPath} projectId={projectId} />
           ) : toolTab === "presets" ? (
             <UiPresetsPanel projectId={projectId} onApplied={handlePresetApplied} />
           ) : (

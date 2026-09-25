@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ExternalLink,
+  Hammer,
   Monitor,
   MonitorCog,
   MousePointerClick,
@@ -123,7 +124,8 @@ async function buildPreview(files: Files, entry: string): Promise<string> {
     plugins: [plugin],
     bundle: true,
     write: false,
-    format: "esm",
+    format: "iife",
+    globalName: "App",
     jsx: "automatic",
     loader: { ".tsx": "tsx", ".ts": "ts", ".jsx": "jsx", ".js": "js", ".css": "css", ".json": "json" },
     absWorkingDir: "/",
@@ -131,14 +133,12 @@ async function buildPreview(files: Files, entry: string): Promise<string> {
   });
   const outputs = result.outputFiles ?? [];
   const js = outputs.find((f) => f.path.endsWith(".js"))?.text ?? "";
-  const css = outputs.find((f) => f.path.endsWith(".css"))?.text ?? "";
   if (!js) throw new Error("No JavaScript was produced.");
 
   const html = files["index.html"] ?? '<!doctype html><html><body><div id="root"></div></body></html>';
   let out = html.replace(/<script\b[^>]*type="module"[^>]*src="[^"]*"[^>]*><\/script>/gi, "");
-  if (css) out = out.replace("</head>", `<style>\n${css}\n</style></head>`);
-  if (!/<script[^>]*type="module">/.test(out)) {
-    out = out.replace("</body>", `<script type="module">\n${js}\n</script></body>`);
+  if (!/<script[^>]*type="module">/.test(out) && !/<script[^>]*>/i.test(out)) {
+    out = out.replace("</body>", `<script>\n${js}\n</script></body>`);
   }
   return out;
 }
@@ -147,12 +147,16 @@ function errmsg(e: unknown): string {
   return e instanceof Error ? e.message : "Preview build failed.";
 }
 
+interface PreviewPaneProps {
+  files: Files;
+  projectId?: string;
+}
+
 /**
- * Static live preview: bundles the project's files in the browser with
- * esbuild-wasm and renders them in a sandboxed iframe behind a browser
- * chrome tool bar (back/forward/refresh, viewport, VM dot).
+ * Live preview: either proxies to a real Vite dev server (when running)
+ * or falls back to static esbuild-wasm bundling in the browser.
  */
-export default function PreviewPane({ files }: { files: Files }) {
+export default function PreviewPane({ files, projectId }: PreviewPaneProps) {
   const entry = findEntry(files);
   const [html, setHtml] = useState<string | null>(null);
   const [err, setErr] = useState("");
@@ -160,29 +164,112 @@ export default function PreviewPane({ files }: { files: Files }) {
   const [nonce, setNonce] = useState(0);
   const [mobile, setMobile] = useState(false);
   const [interactive, setInteractive] = useState(false);
+  const [serverUrl, setServerUrl] = useState<string | null>(null);
+  const [serverStatus, setServerStatus] = useState<"stopped" | "starting" | "running" | "error">("stopped");
+  const [useServer, setUseServer] = useState(false);
 
   useEffect(() => {
     let alive = true;
     const t = setTimeout(async () => {
       setBuilding(true);
       setErr("");
-      try {
-        const out = await buildPreview(files, entry);
-        if (alive) {
-          setHtml(out);
-          setInteractive(false);
+      
+      // If we have a projectId, check if server is running
+      if (projectId) {
+        try {
+          const res = await fetch(`/api/app/projects/${projectId}/server`);
+          const data = await res.json();
+          if (data.success && data.server) {
+            setServerUrl(data.server.url);
+            setServerStatus(data.server.status as any);
+            setUseServer(data.server.status === "running");
+            
+            // If server is running, fetch the HTML from it
+            if (data.server.status === "running" && data.server.url) {
+              try {
+                const htmlRes = await fetch(`${data.server.url}/`);
+                if (htmlRes.ok) {
+                  const htmlContent = await htmlRes.text();
+                  if (alive) {
+                    setHtml(htmlContent);
+                    setInteractive(false);
+                  }
+                }
+              } catch (fetchErr) {
+                console.warn("Failed to fetch from server, falling back to static build:", fetchErr);
+                // Fall through to static build
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to check server status:", e);
         }
-      } catch (e) {
-        if (alive) setErr(errmsg(e));
-      } finally {
-        if (alive) setBuilding(false);
+      }
+      
+      // Fallback to static build if no server or server not running
+      if (!useServer) {
+        try {
+          const out = await buildPreview(files, entry);
+          if (alive) {
+            setHtml(out);
+            setInteractive(false);
+          }
+        } catch (e) {
+          if (alive) setErr(errmsg(e));
+        } finally {
+          if (alive) setBuilding(false);
+        }
+      } else {
+        setBuilding(false);
       }
     }, 350);
     return () => {
       alive = false;
       clearTimeout(t);
     };
-  }, [entry, nonce, files]);
+  }, [entry, nonce, files, projectId, useServer]);
+
+  // Poll server status every 2 seconds when we have a projectId
+  useEffect(() => {
+    if (!projectId) return;
+    
+    let alive = true;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/app/projects/${projectId}/server`);
+        const data = await res.json();
+        if (data.success && data.server) {
+          setServerUrl(data.server.url);
+          setServerStatus(data.server.status as any);
+          setUseServer(data.server.status === "running");
+          
+          // If server is running and we have a URL, fetch fresh content
+          if (data.server.status === "running" && data.server.url && alive) {
+            try {
+              const htmlRes = await fetch(`${data.server.url}/`);
+              if (htmlRes.ok) {
+                const htmlContent = await htmlRes.text();
+                if (alive) {
+                  setHtml(htmlContent);
+                }
+              }
+            } catch (fetchErr: any) {
+              // Ignore fetch errors, server might be restarting
+              console.warn("Failed to fetch from server:", fetchErr?.message);
+            }
+          }
+        }
+      } catch (e: any) {
+        // Ignore polling errors
+        console.warn("Server polling error:", e?.message);
+      }
+    }, 2000);
+    
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [projectId]);
 
   function openInTab() {
     if (!html) return;
@@ -264,6 +351,33 @@ export default function PreviewPane({ files }: { files: Files }) {
           <button
             type="button"
             className="chip !px-1.5"
+            aria-label="Build with agent"
+            title="Ask the agent to build this project"
+            onClick={async () => {
+              if (!projectId) return;
+              try {
+                // Convert files Record<string, string> to object format
+                const filesObj = Object.fromEntries(
+                  Object.entries(files).map(([path, content]) => [path, content])
+                );
+                const res = await fetch(`/api/app/projects/${projectId}/server`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ files: filesObj })
+                });
+                if (!res.ok) throw new Error("Failed to start server");
+              } catch (error) {
+                console.error("Failed to start server:", error);
+                // Optionally show a toast or notification
+              }
+            }}
+            style={{ color: "var(--accent)" }}
+          >
+            <Hammer size={14} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="chip !px-1.5"
             aria-label="Restart computer"
             title="Rebuild preview"
             onClick={() => setNonce((n) => n + 1)}
@@ -306,8 +420,53 @@ export default function PreviewPane({ files }: { files: Files }) {
               </pre>
             </div>
           )}
+          {(!html && !err) && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-4">
+              <div className="text-center">
+                <p className="text-[14px] font-medium" style={{ color: "var(--ink-2)" }}>No preview available</p>
+                <p className="text-[12px] mt-1" style={{ color: "var(--ink-3)" }}>
+                  {projectId ? "Start the dev server to see your app" : "Open a project to preview"}
+                </p>
+              </div>
+              {projectId && (
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-full px-6 py-3 text-[14px] font-semibold text-white shadow-lg"
+                  style={{ background: "var(--accent)" }}
+                  onClick={async () => {
+                    try {
+                      const filesObj = Object.fromEntries(
+                        Object.entries(files).map(([path, content]) => [path, content])
+                      );
+                      const res = await fetch(`/api/app/projects/${projectId}/server`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ files: filesObj })
+                      });
+                      if (!res.ok) throw new Error("Failed to start server");
+                    } catch (error) {
+                      console.error("Failed to start server:", error);
+                    }
+                  }}
+                  disabled={building}
+                >
+                  {building ? (
+                    <>
+                      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden="true" />
+                      Starting server...
+                    </>
+                  ) : (
+                    <>
+                      <Hammer size={16} aria-hidden="true" />
+                      Start Dev Server
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        {!interactive && !err && (
+        {!interactive && !err && html && (
           <button
             type="button"
             className="absolute inset-0 grid place-items-center border-0"

@@ -1,11 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRef } from "react";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
   loading: () => (
-    <div className="mono flex h-full items-center justify-center text-sm muted">loading editor…</div>
+    <div className="mono flex h-full items-center justify-center text-sm muted" style={{ width: "100%", minHeight: "100vh" }}>
+      loading editor…
+    </div>
   ),
 });
 
@@ -29,9 +32,12 @@ export default function FileEditor({ path, value, onChange }: {
   value: string;
   onChange: (value: string) => void;
 }) {
+  const editorRef = useRef<any>(null);
+
   return (
     <MonacoEditor
       height="100%"
+      width="100%"
       language={languageFor(path)}
       value={value}
       onChange={(v) => onChange(v ?? "")}
@@ -46,6 +52,14 @@ export default function FileEditor({ path, value, onChange }: {
         renderLineHighlight: "none",
         overviewRulerLanes: 0,
         padding: { top: 12 },
+      }}
+      onMount={(editor) => {
+        editorRef.current = editor;
+        // Force layout after mount to ensure proper sizing
+        setTimeout(() => editor.layout(), 0);
+      }}
+      beforeMount={(monaco) => {
+        // Ensure monaco is configured
       }}
     />
   );
