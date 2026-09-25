@@ -163,7 +163,7 @@ export default function HomeClient() {
           <div
             ref={terminalRef}
             className={`transition-transform duration-1000 ease-out ${
-              introDone ? 'translate-y-[-100px]' : 'translate-y-0'
+              introDone ? 'translate-y-[-70px]' : 'translate-y-0'
             }`}
           >
             <TerminalChat />
