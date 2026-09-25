@@ -72,7 +72,7 @@ export default function UiPresetsPanel({
         <span className="chip text-[11px]">Catalog</span>
         {status && <span className="truncate text-[12px]" style={{ color: "var(--good)" }}>{status}</span>}
       </div>
-      <div className="grid min-h-0 flex-1 content-start gap-2.5 overflow-y-auto p-3 sm:grid-cols-2">
+      <div className="grid min-h-0 flex-1 overflow-scroll max-h-[78vh] content-start gap-2.5 overflow-y-auto p-3 sm:grid-cols-2">
         {PRESETS.map((p) => {
           const isApplied = applied === p.slug;
           return (

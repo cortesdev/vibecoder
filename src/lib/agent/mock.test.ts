@@ -13,6 +13,16 @@ describe("MockAgent", () => {
     expect(edits[0].after).not.toBe(edits[0].before);
   });
 
+  it("includes approved plan context in the mock edit", async () => {
+    const agent = new MockAgent();
+    const result = await agent.run("apply", { "src/App.tsx": "x" }, {
+      approvedPlan: "Approach: small change",
+      answer: "Keep the current behavior",
+    });
+    expect(result.edits[0].after).toContain("Approach: small change");
+    expect(result.edits[0].after).toContain("Keep the current behavior");
+  });
+
   it("creates src/App.tsx when the project is empty", async () => {
     const agent = new MockAgent();
     const { edits } = await agent.run("hello", {});

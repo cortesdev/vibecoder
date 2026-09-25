@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vibecoder promo (10s)</title>
+<title>vaibco.de promo (10s)</title>
 <style>
   :root { color-scheme: dark; }
   html, body { height: 100%; margin: 0; background: #050405; color: #f4f1f0; font-family: system-ui, sans-serif; }
@@ -26,10 +26,10 @@
    EDIT HERE — copy, logo and colours
    ========================================================================== */
 const CONFIG = {
-  brand: "vibecoder",
+  brand: "vaibco.de",
   logoColor: "#FD3535",   // official logo colour (from newlogo.svg)
   headline: "The AI coding agent that lives on your desktop.",
-  terminalTitle: "vibecoder — zsh",
+  terminalTitle: "vaibco.de — zsh",
   points: ["No subscription.", "No credits.", "Your API keys, your machine, your code."],
   cta: "Download for macOS",
   footnote: "Free & open source · macOS, Windows, Linux",
@@ -39,7 +39,7 @@ const CONFIG = {
 // Terminal script (times in seconds). type:true = typed char by char.
 const TERMINAL = [
   { at: 4.7, dur: 0.5, type: true, prompt: true, text: "cd ~/projects/shop-api" },
-  { at: 5.3, dur: 0.6, type: true, prompt: true, text: 'vibecoder "add Stripe checkout"' },
+  { at: 5.3, dur: 0.6, type: true, prompt: true, text: 'vaibco.de "add Stripe checkout"' },
   { at: 6.1, text: "✓ Read 42 files", color: "green" },
   { at: 6.3, text: "✓ Planned 3 changes", color: "green" },
   { at: 6.5, text: "✎ Editing src/checkout.ts", color: "accent" },
@@ -368,7 +368,7 @@ function record() {
   rec.onstop = () => {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(chunks, { type: "video/webm" }));
-    a.download = `vibecoder-promo-${format}.webm`; a.click();
+    a.download = `vaibco.de-promo-${format}.webm`; a.click();
     document.getElementById("record").textContent = "Record and download .webm";
   };
   document.getElementById("record").textContent = "Recording…";

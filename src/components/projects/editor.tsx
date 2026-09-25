@@ -36,7 +36,7 @@ export default function FileEditor({ path, value, onChange }: {
 
   return (
     <MonacoEditor
-      height="100%"
+      height="77vh"
       width="100%"
       language={languageFor(path)}
       value={value}

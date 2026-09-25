@@ -48,3 +48,15 @@ export async function requireUser() {
   const user = await sessionUser();
   return { user, ok: Boolean(user) };
 }
+
+export function isAdmin(user: { email: string; role?: string } | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  const configured = process.env.VIBECODER_ADMIN_EMAIL?.trim().toLowerCase();
+  return Boolean(configured && user.email.toLowerCase() === configured);
+}
+
+export async function requireAdmin() {
+  const { user, ok } = await requireUser();
+  return { user, ok: ok && isAdmin(user) };
+}

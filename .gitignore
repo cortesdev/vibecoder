@@ -10,6 +10,7 @@
 !.yarn/releases
 !.yarn/versions
 
+
 # testing
 /coverage
 
@@ -21,6 +22,12 @@
 /build
 
 # misc
+/.*
+!/.github/
+!/.github/**
+!/.gitattributes
+!/.gitignore
+!/.nvmrc
 .DS_Store
 *.pem
 
@@ -29,7 +36,6 @@ vibecode.db*
 licenses.db*
 .freebuff/
 *.tsbuildinfo
-agent/
 
 # debug
 npm-debug.log*

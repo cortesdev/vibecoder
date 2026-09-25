@@ -79,6 +79,9 @@ export interface RunOutcome {
   /** The agent's natural-language answer for the chat thread. */
   reply?: string;
   usage?: import("./agent/types").TokenUsage;
+  plan?: string;
+  suggestions?: string[];
+  skillIds?: string[];
   modelId?: string;
   modelLabel?: string;
   usedFallback?: boolean;
@@ -210,7 +213,7 @@ async function runFreeAnswer(
     }
     attempted = true;
     try {
-      const { edits, reply, usage } = await run(agent);
+      const { edits, reply, usage, plan, suggestions, skillIds } = await run(agent);
       const swapped =
         candidate.id === requested.id
           ? ""
@@ -223,6 +226,9 @@ async function runFreeAnswer(
         edits,
         reply,
         usage,
+        plan,
+        suggestions,
+        skillIds,
         modelId: candidate.id,
         modelLabel: candidate.label,
         ...(usedFallback ? { usedFallback: true } : {}),
@@ -307,12 +313,15 @@ export async function runModelPrompt(input: {
   }
 
   try {
-    const { edits, reply, usage } = await input.run(agent);
+    const { edits, reply, usage, plan, suggestions, skillIds } = await input.run(agent);
     return {
       ok: true,
       edits,
       reply,
       usage,
+      plan,
+      suggestions,
+      skillIds,
       modelId: model.id,
       modelLabel: model.label,
       creditsSpent: model.cost,

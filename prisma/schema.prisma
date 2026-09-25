@@ -46,6 +46,7 @@ model User {
   email     String   @unique
   name      String   @default("")
   image     String   @default("")
+  role      String   @default("user")
   createdAt DateTime @default(now())
 
   sessions Session[]
@@ -57,9 +58,32 @@ model User {
   freeWallet FreeWallet?
   freeTxns  FreeTxn[]
   freeCooldown FreeCooldown?
+  learningRecords AgentLearning[]
+}
+
+model AgentLearning {
+  id          String   @id @default(cuid())
+  scope       String   @default("global")
+  status      String   @default("pending")
+  kind        String
+  ciphertext  String
+  iv          String
+  authTag     String
+  keyVersion  String   @default("v1")
+  createdById String?
+  projectId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([scope, status])
+  @@index([status, createdAt])
+  @@index([createdById])
 }
 
 // BYO API keys for free models (e.g. a free Z.ai key for GLM Flash).
+
 // Server-side only; never sent back to the client after save.
 model UserKey {
   id        String   @id @default(cuid())

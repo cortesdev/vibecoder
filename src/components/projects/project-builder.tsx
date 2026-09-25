@@ -10,6 +10,7 @@ import UiPresetsPanel from "./ui-presets-panel";
 import IntegrationsPanel from "./integrations-panel";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
 import type { ModelReadiness } from "@/lib/readiness";
+import type { SkillSummary } from "@/lib/agent/skills";
 
 // Conversational agent panel: a real chat thread on the left (messages
 // persisted as Prompt rows), workspace tools (Files/Editor/Preview/…) on the
@@ -66,7 +67,32 @@ export interface ChatMessageDto {
   changes: ChangeDto[];
 }
 
+interface PendingPlan {
+  prompt: string;
+  plan: string;
+  suggestions: string[];
+  skillIds: string[];
+  reply?: string;
+  modelLabel?: string;
+}
+
 const COMPOSER_MAX_HEIGHT = 180;
+const PLAN_SUGGESTION_FALLBACKS = [
+  "What existing behavior must remain unchanged?",
+  "Which part of the request should be verified first?",
+  "Are there accessibility, security, or rollout constraints to include?",
+];
+
+function planSuggestions(value: unknown): string[] {
+  const result = Array.isArray(value)
+    ? [...new Set(value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))].slice(0, 3)
+    : [];
+  for (const suggestion of PLAN_SUGGESTION_FALLBACKS) {
+    if (result.length === 3) break;
+    if (!result.includes(suggestion)) result.push(suggestion);
+  }
+  return result;
+}
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -157,6 +183,25 @@ export default function ProjectBuilder({
   const [toolsOpen, setToolsOpen] = useState(true);
   const [toolTab, setToolTab] = useState<ToolTab>("preview");
   const autoSentRef = useRef(false);
+  const [skillCatalog, setSkillCatalog] = useState<SkillSummary[]>([]);
+  const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<PendingPlan | null>(null);
+  const [planText, setPlanText] = useState("");
+  const [planAnswer, setPlanAnswer] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/app/skills")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { skills?: SkillSummary[] } | null) => {
+        if (active && Array.isArray(data?.skills)) setSkillCatalog(data.skills);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
 
   // When arriving from the home composer with ?prompt=, send it as the first
   // chat message automatically (once).
@@ -263,36 +308,49 @@ export default function ProjectBuilder({
     [mode, files],
   );
 
-  async function send(e?: React.FormEvent, overrideText?: string) {
-    e?.preventDefault();
-    const text = (overrideText ?? prompt).trim();
-    if (!text || busy) return;
+  function toggleSkill(id: string) {
+    if (busy) return;
+    setPinnedSkillIds((prev) => {
+      if (prev.includes(id)) return prev.filter((value) => value !== id);
+      return prev.length >= 3 ? prev : [...prev, id];
+    });
+  }
 
-    // Optimistic user message; the run streams status into the thread live.
-    const userMsg: ChatMessageDto = {
-      id: `local-user-${Date.now()}`,
-      role: "user",
-      content: text,
-      mode,
-      modelLabel: "",
-      error: "",
-      createdAt: new Date().toISOString(),
-      changes: [],
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setPrompt("");
+  async function send(e?: React.FormEvent, overrideText?: string, approved?: PendingPlan) {
+    e?.preventDefault();
+    const executing = Boolean(approved);
+    const text = (approved?.prompt ?? overrideText ?? prompt).trim();
+    if (!text || busy || (pendingPlan && !approved)) return;
+
+    if (!executing) {
+      const userMsg: ChatMessageDto = {
+        id: `local-user-${Date.now()}`,
+        role: "user",
+        content: text,
+        mode,
+        modelLabel: "",
+        error: "",
+        createdAt: new Date().toISOString(),
+        changes: [],
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      setPrompt("");
+    }
     setErrorNotice("");
     setBusy(true);
     setTrace([]);
-    setStreamStatus(mode === "plan" ? "Planning…" : "Agent is working…");
-    if (boxRef.current) {
-      boxRef.current.style.height = "auto";
-    }
+    setStreamStatus(executing ? "Applying approved plan…" : "Preparing plan…");
+    setSkillsOpen(false);
+    if (boxRef.current) boxRef.current.style.height = "auto";
 
     const payload = {
       prompt: text,
       modelId,
       mode,
+      phase: executing ? "execute" : "plan",
+      plan: executing ? planText : undefined,
+      answer: executing ? planAnswer : undefined,
+      skillIds: executing ? approved?.skillIds : pinnedSkillIds,
       attachments: attachments.length
         ? attachments.map(({ name, type, size, dataUrl }) => ({ name, type, size, dataUrl }))
         : undefined,
@@ -306,7 +364,18 @@ export default function ProjectBuilder({
       });
 
       let lastReply: string | undefined;
-      let done: { ok?: boolean; prompt?: { changes: ChangeDto[] }; reply?: string; modelLabel?: string; error?: string; notice?: string } | null = null;
+      let done: {
+        type?: string;
+        ok?: boolean;
+        prompt?: { changes: ChangeDto[] };
+        plan?: string;
+        reply?: string;
+        suggestions?: string[];
+        skillIds?: string[];
+        modelLabel?: string;
+        error?: string;
+        notice?: string;
+      } | null = null;
 
       if (res.headers.get("content-type")?.includes("text/event-stream") && res.body) {
         const reader = res.body.getReader();
@@ -327,7 +396,10 @@ export default function ProjectBuilder({
                 message?: string;
                 error?: string;
                 notice?: string;
+                plan?: string;
                 reply?: string;
+                suggestions?: string[];
+                skillIds?: string[];
                 modelLabel?: string;
                 prompt?: { changes: ChangeDto[] };
               };
@@ -343,7 +415,7 @@ export default function ProjectBuilder({
                 }
               } else if (msg.type === "error") {
                 done = { ok: false, error: msg.error, notice: msg.notice };
-              } else if (msg.type === "done") {
+              } else if (msg.type === "done" || msg.type === "plan_done") {
                 done = msg;
                 if (msg.reply) lastReply = msg.reply;
               }
@@ -357,8 +429,37 @@ export default function ProjectBuilder({
         done = (await res.json().catch(() => null)) as typeof done;
       }
 
-      if (done?.ok && done.prompt) {
+      if (done?.type === "plan_done" && done.ok && done.plan) {
+        const nextPlan: PendingPlan = {
+          prompt: text,
+          plan: done.plan,
+          suggestions: planSuggestions(done.suggestions),
+          skillIds: Array.isArray(done.skillIds) ? done.skillIds.slice(0, 3) : [],
+          reply: done.reply ?? lastReply,
+          modelLabel: done.modelLabel,
+        };
+        setPendingPlan(nextPlan);
+        setPlanText(nextPlan.plan);
+        setPlanAnswer("");
+        setPinnedSkillIds(nextPlan.skillIds);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `local-plan-${Date.now()}`,
+            role: "assistant",
+            content: nextPlan.reply || "Plan ready for review.",
+            mode,
+            modelLabel: nextPlan.modelLabel ?? "",
+            error: "",
+            createdAt: new Date().toISOString(),
+            changes: [],
+          },
+        ]);
+      } else if (done?.ok && done.prompt) {
         applyResult(done.prompt, done.reply ?? lastReply, done.modelLabel);
+        setPendingPlan(null);
+        setPlanText("");
+        setPlanAnswer("");
         setToolTab("preview");
       } else {
         const errText = done?.error ?? "The agent did not return changes.";
@@ -463,7 +564,7 @@ export default function ProjectBuilder({
   return (
     <div className="flex min-w-0 flex-1 min-h-0 max-h-full" style={{ alignItems: "flex-start" }}>
       {/* Chat thread */}
-      <aside aria-label="Chat" className="card bg-[#00000020] flex min-w-0 min-h-0 h-full flex-1 flex-col overflow-hidden" style={ { maxHeight: "98vh" } }>
+      <aside aria-label="Chat" className="card bg-[#00000020] flex min-w-0 min-h-0 h-full flex-1 flex-col overflow-hidden" style={ { maxHeight: "97vh" } }>
         <div
           className="flex shrink-0 items-center justify-between gap-3 px-3 py-2"
           style={{ borderBottom: "1px solid var(--hairline)" }}
@@ -489,7 +590,7 @@ export default function ProjectBuilder({
           </div>
         )}
 
-        <div ref={threadRef} className="flex-1 min-h-0 space-y-3 p-4" style={{ maxHeight: "71vh", overflowY: "scroll" }} aria-live="polite">
+        <div ref={threadRef} className="flex-1 min-h-0 space-y-3 p-4 md:max-h-[55vh] lg:max-h-[71vh]" style={{  overflowY: "scroll" }} aria-live="polite">
           {messages.length === 0 && !busy && (
             <div className="px-1 pt-10 text-center">
               <p className="text-[14px] font-semibold">Talk to your agent.</p>
@@ -539,6 +640,78 @@ export default function ProjectBuilder({
               </div>
             </div>
           ))}
+
+          {pendingPlan && (
+            <section className="max-w-[92%] rounded-2xl p-3.5" style={{ background: "var(--bg-inset)", boxShadow: "inset 0 0 0 1px var(--hairline)" }} aria-label="Plan awaiting approval">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-[13px] font-semibold">Review plan</h3>
+                <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>No files change yet</span>
+              </div>
+              <label htmlFor="agent-plan" className="sr-only">Edit the proposed plan</label>
+              <textarea
+                id="agent-plan"
+                value={planText}
+                onChange={(event) => setPlanText(event.target.value)}
+                className="mt-2 min-h-32 w-full resize-y rounded-xl border p-2.5 text-[12px] font-light leading-relaxed outline-none focus:border-current"
+                style={{ background: "var(--bg-raised)", borderColor: "var(--hairline)", color: "var(--ink-2)" }}
+                disabled={busy}
+              />
+              <div className="mt-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>Suggestions</p>
+                <div className="mt-1.5 space-y-1.5">
+                  {pendingPlan.suggestions.map((suggestion, index) => (
+                    <button
+                      key={`${suggestion}-${index}`}
+                      type="button"
+                      className="block w-full rounded-lg border px-2.5 py-2 text-left text-[12px] hover:opacity-80"
+                      style={{ borderColor: "var(--hairline)", background: "var(--bg-raised)", color: "var(--ink-2)" }}
+                      onClick={() => setPlanAnswer(suggestion)}
+                      disabled={busy}
+                    >
+                      {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <label htmlFor="agent-plan-answer" className="mt-3 block text-[11px] font-medium uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>
+                Your answer or extra context
+              </label>
+              <textarea
+                id="agent-plan-answer"
+                value={planAnswer}
+                onChange={(event) => setPlanAnswer(event.target.value)}
+                className="mt-1.5 min-h-20 w-full resize-y rounded-xl border p-2.5 text-[12px] leading-relaxed outline-none focus:border-current"
+                style={{ background: "var(--bg-raised)", borderColor: "var(--hairline)", color: "var(--ink)" }}
+                placeholder="Add context or answer a suggestion…"
+                disabled={busy}
+              />
+              <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setPendingPlan(null);
+                    setPlanText("");
+                    setPlanAnswer("");
+                    setPinnedSkillIds([]);
+                    setPrompt(pendingPlan.prompt);
+                  }}
+                  disabled={busy}
+                >
+                  Change request
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                   onClick={() => void send(undefined, pendingPlan.prompt, { ...pendingPlan, plan: planText, skillIds: pinnedSkillIds })}
+
+                  disabled={busy || !planText.trim()}
+                >
+                  Approve &amp; apply
+                </button>
+              </div>
+            </section>
+          )}
 
           {busy && (
             <div className="flex justify-start">
@@ -627,12 +800,66 @@ export default function ProjectBuilder({
                     role="tab"
                     aria-selected={mode === m.id}
                     className="rounded-md px-2.5 py-1 text-[12px] font-semibold"
-                    style={mode === m.id ? { background: "var(--ink)", color: "var(--bg)" } : { color: "var(--ink-2)" }}
-                    onClick={() => setMode(m.id)}
+                     style={mode === m.id ? { background: "var(--ink)", color: "var(--bg)" } : { color: "var(--ink-2)" }}
+                     onClick={() => setMode(m.id)}
+                     disabled={busy || Boolean(pendingPlan)}
+
                   >
                     {m.label}
                   </button>
                 ))}
+              </div>
+              <div className="relative">
+                <button
+                  type="button"
+                  className="chip gap-1"
+                  aria-haspopup="listbox"
+                  aria-expanded={skillsOpen}
+                  aria-label="Choose agent skills"
+                   disabled={busy}
+                   onClick={() => setSkillsOpen((open) => !open)}
+
+                >
+                  {pinnedSkillIds.length > 0 ? `${pinnedSkillIds.length} skill${pinnedSkillIds.length === 1 ? "" : "s"}` : "Auto skills"}
+                  <ChevronDown size={12} aria-hidden="true" />
+                </button>
+                 {skillsOpen && (
+
+                  <div className="absolute bottom-9 left-0 z-20 w-64 rounded-xl border p-1.5 shadow-xl" style={{ borderColor: "var(--hairline)", background: "var(--bg-raised)" }} role="listbox" aria-label="Agent skills">
+                    <button
+                      type="button"
+                      className="flex w-full rounded-lg px-2.5 py-2 text-left text-[12px] hover:bg-white/5"
+                      onClick={() => {
+                        setPinnedSkillIds([]);
+                        setSkillsOpen(false);
+                      }}
+                      role="option"
+                      aria-selected={pinnedSkillIds.length === 0}
+                    >
+                      Auto-select relevant skills
+                    </button>
+                    {skillCatalog.map((skill) => {
+                      const selected = pinnedSkillIds.includes(skill.id);
+                      return (
+                        <button
+                          key={skill.id}
+                          type="button"
+                          className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] hover:bg-white/5"
+                          onClick={() => toggleSkill(skill.id)}
+                          role="option"
+                          aria-selected={selected}
+                        >
+                          <span className="mt-0.5 h-3 w-3 shrink-0 rounded border" style={{ borderColor: selected ? "var(--accent)" : "var(--hairline)", background: selected ? "var(--accent)" : "transparent" }} aria-hidden="true" />
+                          <span>
+                            <span className="block font-medium">{skill.name}</span>
+                            <span className="mt-0.5 block text-[11px]" style={{ color: "var(--ink-3)" }}>{skill.description}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {skillCatalog.length === 0 && <p className="px-2.5 py-2 text-[12px]" style={{ color: "var(--ink-3)" }}>Loading skills…</p>}
+                  </div>
+                )}
               </div>
               <ModelPicker value={modelId} onChange={setModelId} readiness={readiness} />
               <input
@@ -687,7 +914,7 @@ export default function ProjectBuilder({
                   {files.length}
                 </span>
               </div>
-              <ul className="flex-1 overflow-y-auto p-2">
+              <ul className="flex-1 overflow-y-auto p-2 min-h-[76vh] overflow-scroll">
                 {files.map((f) => (
                   <li key={f.path}>
                     <button

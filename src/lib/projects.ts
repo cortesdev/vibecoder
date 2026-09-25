@@ -1,6 +1,10 @@
 import { db } from "./db";
 import { runModelPrompt } from "./engine";
 import { isValidProjectPath, sanitizePath } from "./agent/paths";
+import { getSkillCatalog } from "./agent/skill-catalog";
+import { selectSkillIds, toSkillSummary, type SkillDefinition } from "./agent/skills";
+import { getApprovedLearningContext, recordLearning } from "./learning";
+import type { AgentPlanOptions, AgentRunContext } from "./agent/types";
 import { presetCss, PRESETS } from "./presets";
 
 // White-label starter site. Every new project begins as a small but real Vite +
@@ -321,6 +325,151 @@ export interface PromptAttachment {
   dataUrl?: string;
 }
 
+export interface PromptExecutionContext {
+  approvedPlan?: string;
+  answer?: string;
+  skillIds?: string[];
+}
+
+interface SkillContext {
+  catalog: Awaited<ReturnType<typeof getSkillCatalog>>;
+  ids: string[];
+  skills: SkillDefinition[];
+}
+
+const MODE_PREFIX: Record<string, string> = {
+  plan:
+    "You are in PLAN mode. Do not rewrite the app. Produce a short written plan by creating or editing PLAN.md at the project root, with numbered steps and the files each step will touch.",
+  mission:
+    "You are in MISSION mode. Take the boldest correct pass at the request: make the whole thing feel finished, coherent and impressive, while keeping every edit valid for the project.",
+  skills:
+    "You are in SKILLS mode. Prefer small, surgical, well-crafted edits that demonstrate good engineering practice (clean structure, accessible markup, tidy CSS).",
+};
+
+function attachmentNote(attachments: PromptAttachment[]): string {
+  if (attachments.length === 0) return "";
+  return `\n\nAttachments:\n${attachments
+    .map((a) => {
+      const kind = a.type.startsWith("image/") ? "image" : a.type.startsWith("video/") ? "video" : "file";
+      const img = a.dataUrl && kind === "image" ? " (image data embedded)" : "";
+      return `- ${a.name} (${kind}, ${a.size} bytes)${img}`;
+    })
+    .join("\n")}`;
+}
+
+function promptForMode(content: string, attachments: PromptAttachment[], mode: string): string {
+  const agentText = `${content}${attachmentNote(attachments)}`;
+  return MODE_PREFIX[mode] ? `${MODE_PREFIX[mode]}\n\n${agentText}` : agentText;
+}
+
+async function loadSkillContext(prompt: string, requested: unknown): Promise<SkillContext> {
+  const catalog = await getSkillCatalog();
+  const ids = selectSkillIds(catalog.skills, requested, prompt);
+  const byId = new Map(catalog.skills.map((skill) => [skill.id, skill]));
+  return {
+    catalog,
+    ids,
+    skills: ids.map((id) => byId.get(id)).filter((skill): skill is SkillDefinition => Boolean(skill)),
+  };
+}
+
+async function recordExecutionLearning(input: {
+  userId: string;
+  projectId: string;
+  mode: string;
+  approvedPlan?: string;
+  skillIds?: string[];
+  appliedPaths: string[];
+}): Promise<void> {
+  if (!input.approvedPlan) return;
+  try {
+    await recordLearning({
+      userId: input.userId,
+      projectId: input.projectId,
+      kind: "execution-outcome",
+      summary: `Approved plan: ${input.approvedPlan}\nApplied paths: ${input.appliedPaths.join(", ") || "none"}`,
+      skillIds: input.skillIds,
+      mode: input.mode,
+      success: true,
+    });
+  } catch {
+    return;
+  }
+}
+
+export async function planPrompt(
+  userId: string,
+  projectId: string,
+  content: string,
+  modelId?: string,
+  useFreeTokens = true,
+  attachments: PromptAttachment[] = [],
+  mode = "build",
+  onEvent?: (message: string) => void,
+  requestedSkillIds: unknown = [],
+): Promise<
+  | {
+      ok: true;
+      plan: string;
+      reply?: string;
+      suggestions: string[];
+      skillIds: string[];
+      modelId?: string;
+      modelLabel?: string;
+      usage?: import("./agent/types").TokenUsage;
+      usedFallback?: boolean;
+      creditsSpent?: number;
+      notice?: string;
+    }
+  | { ok: false; error: string; notice?: string; cooldownMs?: number }
+> {
+  const project = await findOwnedProject(userId, projectId);
+  if (!project) return { ok: false, error: "not_found" };
+  const trimmed = content.trim();
+  if (!trimmed) return { ok: false, error: "Prompt is empty." };
+  const files = Object.fromEntries(project.files.map((f) => [f.path, f.content]));
+  onEvent?.(`Reading ${project.files.length} project file${project.files.length === 1 ? "" : "s"}…`);
+  const skillContext = await loadSkillContext(trimmed, requestedSkillIds);
+  const learningContext = await getApprovedLearningContext();
+  onEvent?.(`Selecting ${skillContext.ids.length} skill${skillContext.ids.length === 1 ? "" : "s"}…`);
+  const options: AgentPlanOptions = {
+    skills: skillContext.catalog.skills.map(toSkillSummary),
+    pinnedSkillIds: Array.isArray(requestedSkillIds) && requestedSkillIds.length > 0 ? skillContext.ids : undefined,
+  };
+  const planningPrompt = `${learningContext}${learningContext ? "\n\n" : ""}${promptForMode(trimmed, attachments, mode === "plan" ? "build" : mode)}`;
+  const outcome = await runModelPrompt({
+    userId,
+    projectId,
+    modelId,
+    prompt: trimmed,
+    files,
+    useFreeTokens,
+    run: async (agent) => agent.plan(planningPrompt, files, options),
+  });
+  if (!outcome.ok || !outcome.plan) {
+    return {
+      ok: false,
+      error: outcome.error ?? "The planner did not return a plan.",
+      notice: outcome.notice,
+      cooldownMs: outcome.cooldownMs,
+    };
+  }
+  const selected = selectSkillIds(skillContext.catalog.skills, outcome.skillIds ?? [], trimmed);
+  return {
+    ok: true,
+    plan: outcome.plan,
+    reply: outcome.reply,
+    suggestions: outcome.suggestions ?? [],
+    skillIds: selected,
+    modelId: outcome.modelId,
+    modelLabel: outcome.modelLabel,
+    usage: outcome.usage,
+    usedFallback: outcome.usedFallback,
+    creditsSpent: outcome.creditsSpent,
+    notice: outcome.notice,
+  };
+}
+
 export async function runPrompt(
   userId: string,
   projectId: string,
@@ -330,6 +479,7 @@ export async function runPrompt(
   attachments: PromptAttachment[] = [],
   mode = "build",
   onEvent?: (message: string) => void,
+  executionContext: PromptExecutionContext = {},
 ) {
   const project = await findOwnedProject(userId, projectId);
   if (!project) return { ok: false as const, error: "not_found" };
@@ -340,30 +490,17 @@ export async function runPrompt(
   const files = Object.fromEntries(project.files.map((f) => [f.path, f.content]));
   onEvent?.(`Reading ${project.files.length} project file${project.files.length === 1 ? "" : "s"}…`);
 
-  // Attachments ride along as context so the agent knows what it has to work with.
-  const attachmentNote =
-    attachments.length > 0
-      ? `\n\nAttachments:\n${attachments
-          .map((a) => {
-            const kind = a.type.startsWith("image/") ? "image" : a.type.startsWith("video/") ? "video" : "file";
-            const img = a.dataUrl && kind === "image" ? " (image data embedded)" : "";
-            return `- ${a.name} (${kind}, ${a.size} bytes)${img}`;
-          })
-          .join("\n")}`
-      : "";
-  const agentText = `${trimmed}${attachmentNote}`;
-
-  // Modes steer the agent without changing the edit protocol: Plan asks for a
-  // written plan as an edit to a PLAN.md, Mission and Skills set the stance.
-  const MODE_PREFIX: Record<string, string> = {
-    plan:
-      "You are in PLAN mode. Do not rewrite the app. Produce a short written plan by creating or editing PLAN.md at the project root, with numbered steps and the files each step will touch.",
-    mission:
-      "You are in MISSION mode. Take the boldest correct pass at the request: make the whole thing feel finished, coherent and impressive, while keeping every edit valid for the project.",
-    skills:
-      "You are in SKILLS mode. Prefer small, surgical, well-crafted edits that demonstrate good engineering practice (clean structure, accessible markup, tidy CSS).",
+  const hasExecutionContext = Boolean(
+    executionContext.approvedPlan || executionContext.answer || executionContext.skillIds?.length,
+  );
+  const learningContext = hasExecutionContext ? await getApprovedLearningContext() : "";
+  const promptForAgent = `${learningContext}${learningContext ? "\n\n" : ""}${promptForMode(trimmed, attachments, mode)}`;
+  const skillContext = hasExecutionContext ? await loadSkillContext(trimmed, executionContext.skillIds ?? []) : undefined;
+  const agentContext: AgentRunContext = {
+    approvedPlan: executionContext.approvedPlan,
+    answer: executionContext.answer,
+    skills: skillContext?.skills,
   };
-  const promptForAgent = MODE_PREFIX[mode] ? `${MODE_PREFIX[mode]}\n\n${agentText}` : agentText;
 
   const outcome = await runModelPrompt({
     userId,
@@ -375,7 +512,7 @@ export async function runPrompt(
     run: async (agent) => {
       let result;
       try {
-        result = await agent.run(promptForAgent, files);
+        result = await agent.run(promptForAgent, files, agentContext);
       } catch (err) {
         throw err instanceof Error ? err : new Error("agent failed");
       }
@@ -429,6 +566,14 @@ export async function runPrompt(
         modelId: outcome.modelId ?? "",
         modelLabel: outcome.modelLabel ?? "",
       },
+    });
+    await recordExecutionLearning({
+      userId,
+      projectId,
+      mode,
+      approvedPlan: executionContext.approvedPlan,
+      skillIds: skillContext?.ids,
+      appliedPaths: [],
     });
     return {
       ok: true as const,
@@ -509,7 +654,14 @@ export async function runPrompt(
       modelLabel: outcome.modelLabel ?? "",
     },
   });
-
+  await recordExecutionLearning({
+    userId,
+    projectId,
+    mode,
+    approvedPlan: executionContext.approvedPlan,
+    skillIds: skillContext?.ids,
+    appliedPaths: applied,
+  });
 
   return {
     ok: true as const,
@@ -518,6 +670,9 @@ export async function runPrompt(
     modelId: outcome.modelId,
     modelLabel: outcome.modelLabel,
     usage: outcome.usage,
+    plan: outcome.plan,
+    suggestions: outcome.suggestions,
+    skillIds: outcome.skillIds,
     usedFallback: outcome.usedFallback,
     creditsSpent: outcome.creditsSpent,
     freeTokensUsed: outcome.freeTokensUsed,

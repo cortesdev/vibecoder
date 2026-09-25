@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { LlmAgent, compactSource, llmConfigFromEnv, outputTokenBudget } from "./llm";
+import { DEFAULT_SKILLS, toSkillSummary } from "./skills";
 
 /** The JSON body the agent posted on its first (or only) request. */
 function sentBody(fetcher: { mock: { calls: unknown[][] } }, call = 0): Record<string, unknown> {
@@ -124,6 +125,62 @@ describe("LlmAgent.run", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429 }));
     const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
     await expect(agent.run("hi", {})).rejects.toThrow(/429/);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("LlmAgent.plan", () => {
+  const options = { skills: DEFAULT_SKILLS.map(toSkillSummary) };
+
+  it("returns an editable plan with exactly three suggestions and valid skills", async () => {
+    const fetcher = fetchReply(JSON.stringify({
+      plan: "Approach: Keep the change small\\nPlan: Update the component\\nRisks: Check the layout",
+      reply: "Please review this plan.",
+      suggestions: ["Which state is required?", "What should be tested?", "Any visual constraints?"],
+      skillIds: ["test-driven-development", "unknown-skill"],
+    }));
+    vi.stubGlobal("fetch", fetcher);
+    const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
+    const result = await agent.plan("update the component", { "src/App.tsx": "old" }, options);
+    expect(result.edits).toEqual([]);
+    expect(result.plan).toContain("Approach:");
+    expect(result.suggestions).toHaveLength(3);
+    expect(result.skillIds).toEqual(["test-driven-development"]);
+    expect(sentBody(fetcher).max_tokens).toBe(1800);
+    vi.unstubAllGlobals();
+  });
+
+  it("fills missing suggestions and honors pinned skill ids", async () => {
+    vi.stubGlobal("fetch", fetchReply(JSON.stringify({
+      plan: "Approach: Verify first\\nPlan: Change one file\\nRisks: None known",
+      suggestions: ["Only one suggestion"],
+      skillIds: ["test-driven-development"],
+    })));
+    const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
+    const result = await agent.plan("change it", {}, { ...options, pinnedSkillIds: ["security-and-hardening"] });
+    expect(result.suggestions).toHaveLength(3);
+    expect(result.skillIds).toEqual(["security-and-hardening"]);
+    vi.unstubAllGlobals();
+  });
+
+  it("adds the required headings when a provider omits them", async () => {
+    vi.stubGlobal("fetch", fetchReply(JSON.stringify({
+      plan: "Update the component and verify the result",
+      suggestions: ["One", "Two", "Three"],
+      skillIds: ["context-engineering"],
+    })));
+    const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
+    const result = await agent.plan("change it", {}, options);
+    expect(result.plan).toMatch(/^Approach:/);
+    expect(result.plan).toMatch(/\nPlan:/);
+    expect(result.plan).toMatch(/\nRisks:/);
+    vi.unstubAllGlobals();
+  });
+
+  it("rejects a plan without a plan field", async () => {
+    vi.stubGlobal("fetch", fetchReply(JSON.stringify({ reply: "I can help" })));
+    const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
+    await expect(agent.plan("change it", {}, options)).rejects.toThrow(/missing plan/);
     vi.unstubAllGlobals();
   });
 });

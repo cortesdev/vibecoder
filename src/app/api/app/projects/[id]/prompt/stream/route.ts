@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/auth";
-import { runPrompt, type PromptAttachment } from "@/lib/projects";
+import { planPrompt, runPrompt, type PromptAttachment, type PromptExecutionContext } from "@/lib/projects";
 
 export const maxDuration = 120;
 
@@ -25,6 +25,10 @@ export async function POST(
     modelId?: string;
     attachments?: unknown[];
     mode?: string;
+    phase?: string;
+    plan?: string;
+    answer?: string;
+    skillIds?: unknown[];
   } | null;
 
   const prompt = typeof body?.prompt === "string" ? body.prompt : "";
@@ -43,6 +47,14 @@ export async function POST(
       const dataUrl = (a as { dataUrl?: unknown }).dataUrl;
       return [{ name, type, size, dataUrl: typeof dataUrl === "string" ? dataUrl.slice(0, 2_000_000) : undefined }];
     });
+  const phase = body?.phase === "plan" ? "plan" : "execute";
+  const plan = typeof body?.plan === "string" ? body.plan.trim().slice(0, 12_000) : "";
+  const answer = typeof body?.answer === "string" ? body.answer.trim().slice(0, 4_000) : "";
+  const skillIds = (Array.isArray(body?.skillIds) ? body.skillIds : [])
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.slice(0, 64))
+    .slice(0, 3);
+  const executionContext: PromptExecutionContext = { approvedPlan: plan || undefined, answer: answer || undefined, skillIds };
 
   if (!prompt.trim()) {
     const stream = new ReadableStream({
@@ -79,29 +91,73 @@ export async function POST(
       }, 2000);
 
       try {
-        const result = await runPrompt(user.id, id, prompt, modelId, true, attachments, mode, (message) => {
+        const onStatus = (message: string) => {
           try {
             send({ type: "status", message });
           } catch {
-            // client disconnected mid-run; keep the run going
+            return;
           }
-        });
-        if (heartbeat) clearInterval(heartbeat);
-        if (!result.ok) {
-          send({ type: "error", error: result.error ?? "agent failed", notice: result.notice, cooldownMs: result.cooldownMs });
+        };
+        if (phase === "plan") {
+          const result = await planPrompt(
+            user.id,
+            id,
+            prompt,
+            modelId,
+            true,
+            attachments,
+            mode,
+            onStatus,
+            skillIds,
+          );
+          if (heartbeat) clearInterval(heartbeat);
+          if (!result.ok) {
+            send({ type: "error", error: result.error, notice: result.notice, cooldownMs: result.cooldownMs });
+          } else {
+            send({
+              type: "plan_done",
+              ok: true,
+              plan: result.plan,
+              reply: result.reply,
+              suggestions: result.suggestions,
+              skillIds: result.skillIds,
+              modelId: result.modelId,
+              modelLabel: result.modelLabel,
+              usage: result.usage,
+              usedFallback: result.usedFallback,
+              creditsSpent: result.creditsSpent,
+              notice: result.notice,
+            });
+          }
         } else {
-          send({
-            type: "done",
-            ok: true,
-            prompt: result.prompt,
-            reply: result.reply,
-            modelId: result.modelId,
-            modelLabel: result.modelLabel,
-            usage: result.usage,
-            usedFallback: result.usedFallback,
-            creditsSpent: result.creditsSpent,
-            notice: result.notice,
-          });
+          const result = await runPrompt(
+            user.id,
+            id,
+            prompt,
+            modelId,
+            true,
+            attachments,
+            mode,
+            onStatus,
+            executionContext,
+          );
+          if (heartbeat) clearInterval(heartbeat);
+          if (!result.ok) {
+            send({ type: "error", error: result.error ?? "agent failed", notice: result.notice, cooldownMs: result.cooldownMs });
+          } else {
+            send({
+              type: "done",
+              ok: true,
+              prompt: result.prompt,
+              reply: result.reply,
+              modelId: result.modelId,
+              modelLabel: result.modelLabel,
+              usage: result.usage,
+              usedFallback: result.usedFallback,
+              creditsSpent: result.creditsSpent,
+              notice: result.notice,
+            });
+          }
         }
       } catch (err) {
         if (heartbeat) clearInterval(heartbeat);
