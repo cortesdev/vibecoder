@@ -285,10 +285,10 @@ export default function PreviewPane({ files }: { files: Files }) {
       </div>
 
       {/* Stage */}
-      <div className="relative flex-1 min-h-0 overflow-auto p-3" style={{ maxHeight: "66vh", overflowY: "scroll", background: "var(--stage)" }}>
+      <div className="relative flex-1 h-full overflow-auto p-3" style={{ maxHeight: "85vh", overflowY: "scroll", background: "var(--stage)" }}>
         <div
           className={`relative flex h-full overflow-hidden ${mobile ? "mx-auto max-w-[390px] rounded-2xl" : "w-full rounded-lg"}`}
-          style={{ background: "#00000020", height: mobile ? 844 : "100vh", minHeight: mobile ? 844 : 0 }}
+          style={{ background: "#00000020", height: mobile ? 844 : "95vh", minHeight: mobile ? 844 : 0 }}
         >
           {html && (
             <iframe

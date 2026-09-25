@@ -452,7 +452,7 @@ export default function ProjectBuilder({
   return (
     <div className="flex min-w-0 flex-1 min-h-0 max-h-full" style={{ alignItems: "flex-start" }}>
       {/* Chat thread */}
-      <aside aria-label="Chat" className="card bg-[#00000020] flex min-w-0 min-h-0 h-full flex-1 flex-col overflow-hidden">
+      <aside aria-label="Chat" className="card bg-[#00000020] flex min-w-0 min-h-0 h-full flex-1 flex-col overflow-hidden" style={ { maxHeight: "98vh" } }>
         <div
           className="flex shrink-0 items-center justify-between gap-3 px-3 py-2"
           style={{ borderBottom: "1px solid var(--hairline)" }}
@@ -478,7 +478,7 @@ export default function ProjectBuilder({
           </div>
         )}
 
-        <div ref={threadRef} className="flex-1 min-h-0 space-y-3 p-4" style={{ maxHeight: "66vh", overflowY: "scroll" }} aria-live="polite">
+        <div ref={threadRef} className="flex-1 min-h-0 space-y-3 p-4" style={{ maxHeight: "58vh", overflowY: "scroll" }} aria-live="polite">
           {messages.length === 0 && !busy && (
             <div className="px-1 pt-10 text-center">
               <p className="text-[14px] font-semibold">Talk to your agent.</p>
@@ -590,7 +590,7 @@ export default function ProjectBuilder({
               id="chat-prompt"
               ref={boxRef}
               className="w-full resize-none bg-transparent px-1 py-1 font-[inherit] text-[15px] leading-relaxed outline-none"
-              style={{ color: "var(--ink)", minHeight: "100vh" }}
+              style={{ color: "var(--ink)", minHeight: "auto" }}
               placeholder={mode === "plan" ? "Ask for a plan…" : "Message the agent — Enter to send, Shift+Enter for a new line"}
               value={prompt}
               onChange={(e) => {
@@ -648,7 +648,7 @@ export default function ProjectBuilder({
 
       {/* Tools: files / editor / preview / presets / integrations */}
       {toolsOpen && (
-        <aside className="card flex shrink-0 min-h-0 max-h-full flex-col overflow-hidden" aria-label="Workspace" style={{ width: 420, minHeight: "98%",  minWidth: 0, maxWidth: 720 }}>
+        <aside className="card flex shrink-0 min-h-0 max-h-full flex-col overflow-hidden" aria-label="Workspace" style={{ width: 420, minWidth: 0, maxWidth: 720, maxHeight: "100%" }}>
           <div className="flex shrink-0 flex-wrap items-center gap-1 border-b px-2 py-1.5" style={{ borderColor: "var(--hairline)" }} role="tablist" aria-label="Workspace">
             {TOOL_TABS.map((t) => (
               <button
