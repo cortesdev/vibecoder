@@ -147,7 +147,21 @@ async function main() {
     const now = new Date().toISOString();
 
     console.log(`migrate: applying ${name}`);
-    await client.executeMultiple(sql);
+    // Statement-by-statement so drifted databases (columns/tables created via
+    // `db push` instead of a migration) survive: "already exists" steps are
+    // skipped, anything else still fails the deploy loudly.
+    for (const stmt of sql.split(/;\s*\n/).map((s) => s.trim()).filter(Boolean)) {
+      try {
+        await client.execute(stmt);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/duplicate column name|already exists/i.test(msg)) {
+          console.log(`migrate: skipping present object in ${name} (${msg.slice(0, 90)})`);
+          continue;
+        }
+        throw err;
+      }
+    }
     await client.execute(
       `INSERT INTO "_prisma_migrations"
         ("id", "checksum", "finished_at", "migration_name", "started_at", "applied_steps_count")

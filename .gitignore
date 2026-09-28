@@ -59,3 +59,4 @@ next-env.d.ts
 
 # nested repo folder (user-local)
 vibecoder/
+.claude

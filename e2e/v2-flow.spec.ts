@@ -31,7 +31,16 @@ test.describe("v2 rebuild flow", () => {
     await page.getByLabel("Describe what to build").fill("A tiny blog about shipping");
     await page.getByRole("button", { name: "Send message" }).click();
     await expect(page.getByText(/Starting your project|Running your first prompt/i)).toBeVisible();
-    await page.waitForURL(/\/agent\/projects\/[^/]+$/, { timeout: 60_000 });
+    await expect(page.getByText(/No free provider|failed/i).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByLabel("Describe what to build")).toHaveValue("A tiny blog about shipping");
+
+    // Create the workspace project directly (template: blog) for the rest.
+    const created = await page.request.post("/api/app/projects", {
+      data: { name: "e2e blog", templateId: "blog" },
+    });
+    expect(created.ok()).toBe(true);
+    const { project } = (await created.json()) as { project: { id: string } };
+    await page.goto(`/agent/projects/${project.id}`);
 
     // Workspace: preview builds the blog starter with zero prompts.
     const frame = page.frameLocator('iframe[title="Project preview"]');

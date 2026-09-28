@@ -4,14 +4,17 @@ export type LibsqlConnection = {
 };
 
 export function libsqlConnection(): LibsqlConnection {
-  const host = process.env.TURSO_DATABASE_URL;
-  const token = process.env.TURSO_DATABASE_TOKEN ?? process.env.TURSO_API_KEY;
+  // Empty strings count as unset (orchestrators hand "" for empty values).
+  const host = process.env.TURSO_DATABASE_URL || undefined;
+  const token = process.env.TURSO_DATABASE_TOKEN || process.env.TURSO_API_KEY || undefined;
 
   if (host && token) {
     return { url: host, authToken: token };
   }
 
-  const full = host ?? token ?? process.env.LICENSE_DB_URL ?? "";
+  const full = host || token || process.env.LICENSE_DB_URL || "";
+
+  if (full.startsWith("file:")) return { url: full };
 
   if (full.startsWith("libsql://") || full.startsWith("https://")) {
     const u = new URL(full);
