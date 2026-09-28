@@ -5,6 +5,7 @@ import {
   validateAttachmentBytes,
 } from "@/lib/attachments/server";
 import { extractVideoFrames, unsupportedRunner } from "@/lib/attachments/video";
+import { measure } from "@/lib/instrument";
 import type { AgentAttachment } from "@/lib/agent/types";
 
 // Multimodal agent turn. Accepts multipart/form-data with `message` and
@@ -88,7 +89,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const exportUrl = `/api/app/projects/${id}/export`;
   const metadata = JSON.stringify({ attachments: described, exportUrl });
 
-  const result = await runPrompt(user.id, id, message || "(attachments only)", modelId, true, [], "build", undefined, {}, attachments, metadata);
+  const result = await measure("agent.turn", () =>
+    runPrompt(user.id, id, message || "(attachments only)", modelId, true, [], "build", undefined, {}, attachments, metadata),
+  );
   if (!result.ok) {
     return Response.json({ ok: false, error: result.error, notice: result.notice }, { status: 400 });
   }

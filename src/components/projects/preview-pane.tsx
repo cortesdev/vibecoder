@@ -11,6 +11,7 @@ import {
   type Files,
 } from "@/lib/preview/build-preview";
 import { acceptBridgeEvent, bridgeListenerSnippet } from "@/lib/preview/bridge";
+import { measure } from "@/lib/instrument";
 
 // Browser-only live preview. Bundles stored files with esbuild-wasm (loaded
 // once per session), caches identical bundles by content hash, and renders the
@@ -61,7 +62,7 @@ function newNonce(): string {
 
 const REBUILD_DEBOUNCE_MS = 350;
 
-export default function PreviewPane({ files }: { files: Files }) {
+export default function PreviewPane({ files, projectId }: { files: Files; projectId?: string }) {
   const entry = useMemo(() => findEntry(files), [files]);
   const [html, setHtml] = useState<string | null>(null);
   const [err, setErr] = useState("");
@@ -70,6 +71,8 @@ export default function PreviewPane({ files }: { files: Files }) {
   const [nonce, setNonce] = useState(0);
   const [viewport, setViewport] = useState<PreviewViewport>("desktop");
   const [interactive, setInteractive] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [shareMsg, setShareMsg] = useState("");
   const frameRef = useRef<HTMLIFrameElement>(null);
   // A fresh nonce per build binds bridge reports to this exact document.
   const [docNonce, setDocNonce] = useState(() => newNonce());
@@ -97,7 +100,7 @@ export default function PreviewPane({ files }: { files: Files }) {
         let js = cacheGet(fingerprint);
         if (js === undefined) {
           const esbuild = await loadEsbuild();
-          js = await bundleJs(esbuild, files);
+          js = await measure("preview.build", () => bundleJs(esbuild, files));
           cacheSet(fingerprint, js);
         }
         const doc = assembleHtml(files, `${bridgeListenerSnippet(id)}\n${js}`);
@@ -137,6 +140,27 @@ export default function PreviewPane({ files }: { files: Files }) {
     return () => window.removeEventListener("message", onMessage);
   }, [docNonce]);
 
+  async function share() {
+    if (!html || !projectId || sharing) return;
+    setSharing(true);
+    setShareMsg("");
+    try {
+      const res = await fetch(`/api/app/projects/${projectId}/shares`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ snapshot: html }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; url?: string; error?: string } | null;
+      if (!res.ok || !data?.ok || !data.url) throw new Error(data?.error ?? "Share failed.");
+      const absolute = new URL(data.url, window.location.origin).toString();
+      await navigator.clipboard.writeText(absolute).catch(() => undefined);
+      setShareMsg(`Share link copied (expires in 7 days): ${absolute}`);
+    } catch (e) {
+      setShareMsg(e instanceof Error ? e.message : "Share failed.");
+    } finally {
+      setSharing(false);
+    }
+  }
   function openInTab() {
     if (!html) return;
     const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
@@ -157,7 +181,14 @@ export default function PreviewPane({ files }: { files: Files }) {
         onInteract={() => setInteractive(true)}
         building={building}
         canOpen={html !== null}
+        onShare={projectId ? share : undefined}
+        sharing={sharing}
       />
+      {shareMsg && (
+        <p role="status" className="shrink-0 px-3 py-1 text-[12px]" style={{ color: "var(--ink-2)" }}>
+          {shareMsg}
+        </p>
+      )}
       <div className="relative flex-1 h-full overflow-auto p-3" style={{ maxHeight: "82vh", overflowY: "scroll", background: "var(--stage)" }}>
         <div
           className={`relative flex h-full overflow-hidden ${mobile ? "mx-auto max-w-[390px] rounded-2xl" : "w-full rounded-lg"}`}

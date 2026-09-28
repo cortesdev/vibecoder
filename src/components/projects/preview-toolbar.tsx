@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Monitor, MousePointerClick, RotateCw, Smartphone } from "lucide-react";
+import { ExternalLink, Link2, Monitor, MousePointerClick, RotateCw, Smartphone } from "lucide-react";
 
 // Preview toolbar: Refresh (immediate rebuild), Desktop/Mobile viewport,
 // Open in tab, Click-to-interact. Controlled and stateless so keyboard focus
@@ -17,6 +17,8 @@ export default function PreviewToolbar({
   onInteract,
   building,
   canOpen,
+  onShare,
+  sharing,
 }: {
   viewport: PreviewViewport;
   onViewport: (v: PreviewViewport) => void;
@@ -26,6 +28,8 @@ export default function PreviewToolbar({
   onInteract: () => void;
   building: boolean;
   canOpen: boolean;
+  onShare?: () => void;
+  sharing?: boolean;
 }) {
   return (
     <div
@@ -93,6 +97,18 @@ export default function PreviewToolbar({
       >
         <ExternalLink size={14} aria-hidden="true" />
       </button>
+      {onShare && (
+        <button
+          type="button"
+          className="chip !px-1.5"
+          aria-label="Create a read-only share link"
+          title="Create a read-only share link (expires in 7 days)"
+          onClick={onShare}
+          disabled={!canOpen || sharing}
+        >
+          <Link2 size={14} aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }

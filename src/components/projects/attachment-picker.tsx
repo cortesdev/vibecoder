@@ -119,6 +119,7 @@ export default function AttachmentPicker({
         multiple
         className="hidden"
         id={inputId}
+        aria-label="Attach files"
         accept="image/*,video/mp4,video/webm,.pdf,.txt,.md,.json,.csv,.svg"
         onChange={(e) => {
           add(Array.from(e.target.files ?? []));

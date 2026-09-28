@@ -5,7 +5,9 @@ import { getSkillCatalog } from "./agent/skill-catalog";
 import { selectSkillIds, toSkillSummary, type SkillDefinition } from "./agent/skills";
 import { getApprovedLearningContext, recordLearning } from "./learning";
 import type { AgentAttachment, AgentPlanOptions, AgentRunContext } from "./agent/types";
-import { presetCss, PRESETS } from "./presets";
+import { PRESETS } from "./presets";
+import { applyPresetCss } from "./presets/apply";
+import { indexCss } from "./templates/shared";
 
 import { filesFor } from "./templates/catalog";
 
@@ -472,20 +474,119 @@ export async function saveFile(userId: string, projectId: string, rawPath: strin
 
 export const PRESET_CSS_PATH = "src/index.css";
 
-/** Apply a UI preset: rewrite src/index.css with the preset stylesheet. */
-export async function applyPreset(userId: string, projectId: string, slug: string) {
+export interface PresetUndoRecord {
+  previousCss: string;
+  previousPresetId: string | null;
+  appliedCss: string;
+  presetId: string;
+  consumed?: boolean;
+}
+
+function readUndo(metadata: string | null): PresetUndoRecord | null {
+  if (!metadata) return null;
+  try {
+    const parsed = JSON.parse(metadata) as { presetUndo?: PresetUndoRecord };
+    return parsed.presetUndo ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Apply a UI preset: rewrite only the theme section of src/index.css, persist
+ *  the selection, and record exact-undo bytes on the chat message. */
+export async function applyProjectPreset(userId: string, projectId: string, slug: string) {
   const project = await findOwnedProject(userId, projectId);
   if (!project) return { ok: false as const, error: "not_found" as const };
   const preset = PRESETS.find((p) => p.slug === slug);
   if (!preset) return { ok: false as const, error: "unknown_preset" as const };
-  const css = presetCss(preset);
+
+  const current = project.files.find((f) => f.path === PRESET_CSS_PATH)?.content;
+  let nextCss: string;
+  let previousCss: string;
+  if (current === undefined) {
+    // No stylesheet yet: create the full base with this preset's theme.
+    previousCss = "";
+    nextCss = indexCss(preset.vars);
+  } else {
+    try {
+      ({ nextCss, previousCss } = applyPresetCss(current, slug));
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : "apply failed" };
+    }
+  }
 
   await db.projectFile.upsert({
     where: { projectId_path: { projectId, path: PRESET_CSS_PATH } },
-    create: { projectId, path: PRESET_CSS_PATH, content: css },
-    update: { content: css },
+    create: { projectId, path: PRESET_CSS_PATH, content: nextCss },
+    update: { content: nextCss },
   });
-  return { ok: true as const, slug: preset.slug, name: preset.name, file: { path: PRESET_CSS_PATH, content: css } };
+  await db.project.update({ where: { id: projectId }, data: { activePresetId: preset.slug } });
+  const undo: PresetUndoRecord = {
+    previousCss,
+    previousPresetId: (project as { activePresetId?: string | null }).activePresetId ?? null,
+    appliedCss: nextCss,
+    presetId: preset.slug,
+  };
+  await db.prompt.create({
+    data: {
+      projectId,
+      content: `Applied the ${preset.name} theme. You can undo this from the Presets panel.`,
+      role: "assistant",
+      mode: "build",
+      modelLabel: "",
+      metadata: JSON.stringify({ presetUndo: undo }),
+    },
+  });
+  return { ok: true as const, slug: preset.slug, name: preset.name };
+}
+
+/** Undo the latest preset application. Restores exact bytes + prior selection.
+ *  Refuses (rather than overwriting) when the CSS changed since the apply. */
+export async function undoProjectPreset(userId: string, projectId: string) {
+  const project = await findOwnedProject(userId, projectId);
+  if (!project) return { ok: false as const, error: "not_found" as const };
+
+  const recent = await db.prompt.findMany({
+    where: { projectId },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+  });
+  const action = recent.map((r) => ({ row: r, undo: readUndo(r.metadata) })).find((x) => x.undo && !x.undo.consumed);
+  if (!action || !action.undo) return { ok: false as const, error: "Nothing to undo." as const };
+  const undo = action.undo;
+
+  const current = project.files.find((f) => f.path === PRESET_CSS_PATH)?.content;
+  if (current !== undo.appliedCss) {
+    return {
+      ok: false as const,
+      error: "The stylesheet changed after the theme was applied, so undo refuses to overwrite newer work. Re-apply a theme to start over." as const,
+    };
+  }
+
+  if (undo.previousCss === "") {
+    await db.projectFile.deleteMany({ where: { projectId, path: PRESET_CSS_PATH } });
+  } else {
+    await db.projectFile.upsert({
+      where: { projectId_path: { projectId, path: PRESET_CSS_PATH } },
+      create: { projectId, path: PRESET_CSS_PATH, content: undo.previousCss },
+      update: { content: undo.previousCss },
+    });
+  }
+  await db.project.update({ where: { id: projectId }, data: { activePresetId: undo.previousPresetId } });
+  await db.prompt.update({
+    where: { id: action.row.id },
+    data: { metadata: JSON.stringify({ presetUndo: { ...undo, consumed: true } }) },
+  });
+  await db.prompt.create({
+    data: {
+      projectId,
+      content: "Undid the theme change — the previous stylesheet is back byte-for-byte.",
+      role: "assistant",
+      mode: "build",
+      modelLabel: "",
+    },
+  });
+  return { ok: true as const, presetId: undo.previousPresetId };
 }
 
 /** Service credentials a user has connected (counts per service only). */

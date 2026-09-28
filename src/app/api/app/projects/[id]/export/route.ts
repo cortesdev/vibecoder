@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { findOwnedProject } from "@/lib/projects";
 import { buildExportZip, exportFilename, ExportError } from "@/lib/projects/export";
+import { measure } from "@/lib/instrument";
 
 // Authenticated ZIP download of the stored project files. Ownership is
 // verified before anything is read; failures are structured JSON, never a
@@ -18,7 +19,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   let zip: Uint8Array;
   try {
-    zip = buildExportZip(Object.fromEntries(project.files.map((f) => [f.path, f.content])));
+    const files = Object.fromEntries(project.files.map((f) => [f.path, f.content]));
+    zip = await measure("export.zip", async () => buildExportZip(files));
   } catch (err) {
     const message = err instanceof ExportError ? err.message : "export failed";
     const path = err instanceof ExportError ? err.path : undefined;

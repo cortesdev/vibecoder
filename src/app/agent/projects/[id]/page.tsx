@@ -97,6 +97,7 @@ export default async function ProjectPage({
         initialPrompt={initialPrompt}
         initialMode={initialMode}
         initialModelId={initialModelId}
+        initialPresetId={project.activePresetId}
         readiness={readiness}
       />
     </div>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import PreviewPane from "./preview-pane";
+import PresetPanel from "./preset-panel";
 import AttachmentPicker, { type PickedFile } from "./attachment-picker";
 import ModelPicker from "@/components/app/model-picker";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
@@ -115,6 +116,7 @@ export default function ProjectBuilder({
   initialMessages,
   initialNotice,
   initialModelId,
+  initialPresetId = null,
   readiness = [],
 }: {
   projectId: string;
@@ -125,6 +127,7 @@ export default function ProjectBuilder({
   initialPrompt?: string;
   initialMode?: string;
   initialModelId?: string;
+  initialPresetId?: string | null;
   readiness?: ModelReadiness[];
 }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Preview");
@@ -346,7 +349,9 @@ export default function ProjectBuilder({
         </div>
         <div className="flex min-h-0 flex-1 flex-col" data-testid={`panel-${projectId}-${tab}`}>
           {tab === "Preview" ? (
-            <PreviewPane files={files} />
+            <PreviewPane files={files} projectId={projectId} />
+          ) : tab === "Presets" ? (
+            <PresetPanel projectId={projectId} activePresetId={initialPresetId} onChanged={() => router.refresh()} />
           ) : tab === "Files" ? (
             <ul className="flex-1 space-y-1 overflow-y-auto p-4" aria-label="Project files">
               {initialFiles.map((f) => (

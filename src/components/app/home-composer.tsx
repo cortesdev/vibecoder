@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Paperclip, Send, X, File } from "lucide-react";
+import { Send } from "lucide-react";
 import ModelPicker from "./model-picker";
+import AttachmentPicker, { type PickedFile } from "@/components/projects/attachment-picker";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
 import { resolveTemplate } from "@/lib/templates/catalog";
+import { downscaleImage } from "@/lib/attachments/client";
 import type { ModelReadiness } from "@/lib/readiness";
 
 // Home chat composer: type a message, hit Enter, and it creates the project
@@ -18,14 +20,6 @@ type Mode = (typeof MODES)[number];
 function nameFromPrompt(prompt: string): string {
   const words = prompt.trim().split(/\s+/).slice(0, 5).join(" ");
   return (words.length > 42 ? `${words.slice(0, 42)}…` : words) || "New project";
-}
-
-interface Attachment {
-  id: string;
-  name: string;
-  type: string;
-  size: number;
-  url?: string;
 }
 
 export default function HomeComposer({
@@ -45,11 +39,12 @@ export default function HomeComposer({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachments, setAttachments] = useState<PickedFile[]>([]);
 
   async function submit() {
     const text = prompt.trim();
-    if (!text || busy) return;
+    const valid = attachments.filter((a) => !a.error);
+    if ((!text && valid.length === 0) || busy) return;
     setBusy(true);
     setError("");
     setStatus("Starting your project…");
@@ -58,15 +53,33 @@ export default function HomeComposer({
       const created = await fetch("/api/app/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: nameFromPrompt(text), templateId }),
+        body: JSON.stringify({ name: nameFromPrompt(text || valid.map((a) => a.file.name).join(", ")), templateId }),
       });
       const data = (await created.json()) as { ok: boolean; project?: { id: string }; error?: string };
       if (!created.ok || !data.ok || !data.project) throw new Error(data.error ?? "Could not create the project.");
-      const params = new URLSearchParams();
-      params.set("prompt", text);
-      params.set("mode", mode.toLowerCase());
-      if (modelId) params.set("model", modelId);
-      router.push(`/agent/projects/${data.project.id}?${params.toString()}`);
+      const projectId = data.project.id;
+      // First turn runs through the multipart agent route so attachments ride
+      // along; the thread below shows the persisted result. Typed text is kept
+      // until the server answers.
+      const form = new FormData();
+      form.set("message", text);
+      if (modelId) form.set("modelId", modelId);
+      for (const p of valid) {
+        let blob: Blob = p.file;
+        if (p.file.type === "image/png" || p.file.type === "image/jpeg" || p.file.type === "image/webp") {
+          try {
+            blob = (await downscaleImage(p.file)).blob;
+          } catch {
+            // Ship the original; the server validates authoritatively.
+          }
+        }
+        form.append("attachments", blob, p.file.name);
+      }
+      setStatus("Running your first prompt…");
+      const turned = await fetch(`/api/app/projects/${projectId}/agent`, { method: "POST", body: form });
+      const result = (await turned.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!turned.ok || !result?.ok) throw new Error(result?.error ?? "The first prompt failed.");
+      router.push(`/agent/projects/${projectId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setBusy(false);
@@ -80,32 +93,7 @@ export default function HomeComposer({
         className="rounded-2xl p-3 transition-shadow focus-within:shadow-[0_0_0_1px_var(--accent)]"
         style={{ background: "var(--bg-raised)", boxShadow: "inset 0 0 0 1px var(--hairline)" }}
       >
-        {attachments.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {attachments.map((a) => (
-              <span
-                key={a.id}
-                className="flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-[11.5px]"
-                style={{ borderColor: "var(--hairline)", background: "var(--bg-inset)" }}
-              >
-                {a.url ? (
-                  <img src={a.url} alt="" className="h-5 w-5 rounded object-cover" />
-                ) : (
-                  <File size={12} aria-hidden="true" style={{ color: "var(--ink-3)" }} />
-                )}
-                <span className="mono max-w-[140px] truncate">{a.name}</span>
-                <button
-                  type="button"
-                  className="rounded p-0.5 hover:opacity-70"
-                  aria-label={`Remove ${a.name}`}
-                  onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
-                >
-                  <X size={11} aria-hidden="true" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
+        <AttachmentPicker value={attachments} onChange={setAttachments} />
 
         <label htmlFor="home-prompt" className="sr-only">
           Describe what to build
@@ -144,41 +132,11 @@ export default function HomeComposer({
             ))}
           </div>
           <ModelPicker value={modelId} onChange={setModelId} readiness={readiness} />
-          <input
-            type="file"
-            multiple
-            className="hidden"
-            id="home-attach"
-            accept="image/*,.pdf,.txt,.md,.json,.csv,.svg,.zip"
-            onChange={(e) => {
-              const list = e.target.files;
-              if (list) {
-                const added = Array.from(list).map((f, i) => ({
-                  id: `${Date.now()}-${i}`,
-                  name: f.name,
-                  type: f.type || "file",
-                  size: f.size,
-                  url: f.type.startsWith("image/") ? URL.createObjectURL(f) : undefined,
-                }));
-                setAttachments((prev) => [...prev, ...added]);
-              }
-              e.target.value = "";
-            }}
-          />
-          <button
-            type="button"
-            className="chip"
-            aria-label="Attach files"
-            title="Attach files"
-            onClick={() => document.getElementById("home-attach")?.click()}
-          >
-            <Paperclip size={14} aria-hidden="true" />
-          </button>
           <button
             type="button"
             className="btn btn-primary ml-auto flex h-9 w-9 items-center justify-center !p-0"
             onClick={() => void submit()}
-            disabled={busy || !prompt.trim()}
+            disabled={busy || (!prompt.trim() && attachments.filter((a) => !a.error).length === 0)}
             aria-label="Send message"
           >
             <Send size={15} aria-hidden="true" />
