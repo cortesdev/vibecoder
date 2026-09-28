@@ -191,3 +191,92 @@ details[open]::details-content { block-size: auto; }
     scroll-behavior: auto !important;
   }
 }
+
+/* ── Landing motion (Relay port, accent-driven) ────────────────────────────
+   Scroll reveals, word-stagger headlines, cursor ring, spotlight cards,
+   nav progress, accordion, and the red ember background layer. Everything
+   reads var(--accent), so the red brand survives both themes. */
+
+/* Scroll reveal */
+.lm-rv {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.8s var(--ease-out), transform 0.8s var(--ease-out);
+}
+.lm-rv.is-in { opacity: 1; transform: none; }
+
+/* Word-stagger headline */
+.lm-w { display: inline-block; overflow: hidden; vertical-align: top; padding-bottom: 0.1em; margin-bottom: -0.1em; }
+.lm-w > span { display: inline-block; transform: translateY(110%); animation: lm-word 0.9s var(--ease-out) forwards; }
+@keyframes lm-word { to { transform: none; } }
+
+/* Cursor ring follower */
+.lm-ring {
+  position: fixed; left: 0; top: 0; z-index: 60;
+  width: 24px; height: 24px; margin: -12px 0 0 -12px;
+  border-radius: 50%; border: 1.5px solid var(--accent);
+  box-shadow: 0 0 10px -2px var(--accent);
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.3s, width 0.25s, height 0.25s, margin 0.25s, background-color 0.25s;
+}
+.lm-ring.on { opacity: 1; }
+.lm-ring.big {
+  width: 48px; height: 48px; margin: -24px 0 0 -24px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+@media (pointer: coarse) { .lm-ring { display: none; } }
+
+/* Spotlight cards */
+.spot-card { position: relative; }
+.spot-card::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  background: radial-gradient(
+    360px circle at var(--sx, 50%) var(--sy, 50%),
+    color-mix(in srgb, var(--accent) 9%, transparent),
+    transparent 60%
+  );
+}
+.spot-card:hover::before { opacity: 1; }
+
+/* Nav scroll progress */
+.nav-progress {
+  position: absolute; left: 0; bottom: -1px; height: 2px; width: 100%;
+  background: var(--accent); transform-origin: 0 50%;
+  transform: scaleX(var(--p, 0)); box-shadow: 0 0 8px var(--accent);
+}
+.nav-link-active { color: var(--ink) !important; }
+
+/* Accordion (animated FAQ) */
+.lm-acc { border-top: 1px solid var(--hairline); }
+.lm-acc-item { border-bottom: 1px solid var(--hairline); }
+.lm-acc-q {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  gap: 20px; padding: 20px 0; background: none; border: 0; cursor: pointer;
+  color: var(--ink); font: inherit; font-size: 17px; font-weight: 500; text-align: left;
+}
+.lm-acc-q svg { flex: none; color: var(--ink-3); transition: transform 0.4s var(--ease-out), color 0.3s; }
+.lm-acc-item.open .lm-acc-q svg { transform: rotate(45deg); color: var(--accent); }
+.lm-acc-a { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.45s var(--ease-out); }
+.lm-acc-item.open .lm-acc-a { grid-template-rows: 1fr; }
+.lm-acc-a > div { overflow: hidden; }
+.lm-acc-a p { margin: 0; padding: 0 40px 20px 0; opacity: 0; transition: opacity 0.4s; }
+.lm-acc-item.open .lm-acc-a p { opacity: 1; transition-delay: 0.1s; }
+
+/* Ember background: red rays + 2D logo zoom. Hidden in light theme, where a
+   screen-blend red layer would blow out the paper background. */
+.ember-layer { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+.ember-rays, .ember-rays canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ember-rays canvas { mix-blend-mode: screen; }
+.ember-logo {
+  position: absolute; left: 50%; top: 40%;
+  width: 192px; height: 192px; margin: -96px 0 0 -96px;
+  will-change: transform, opacity, filter;
+}
+.ember-logo-glow {
+  position: absolute; inset: -60%; border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent) 32%, transparent), transparent 65%);
+  filter: blur(10px);
+}
+.ember-logo-img { position: relative; width: 100%; height: 100%; border-radius: 22%; }
+:root[data-theme="light"] .ember-layer { display: none; }

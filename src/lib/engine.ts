@@ -14,12 +14,13 @@ import { MockAgent } from "./agent/mock";
 import type { Agent } from "./agent/types";
 
 // OpenAI-compatible endpoints per provider. Anthropic exposes an OpenAI-
-// compatible surface at /v1; Z.ai and OpenCode Zen are OpenAI-compatible too.
+// compatible surface at /v1; Z.ai, Cerebras and Hugging Face router are
+// OpenAI-compatible too.
 const PROVIDER_BASE_URL: Record<string, string> = {
   opencode: "https://opencode.ai/zen/v1",
-  // Z.ai (GLM Flash) is commented out for now — restore here and in
-  // PLATFORM_KEY_ENV when the free fallback chain needs it again.
-  // zai: "https://api.z.ai/api/paas/v4",
+  zai: "https://api.z.ai/api/paas/v4",
+  cerebras: "https://api.cerebras.ai/v1",
+  huggingface: "https://router.huggingface.co/v1",
   google: "https://generativelanguage.googleapis.com/v1beta/openai",
   anthropic: "https://api.anthropic.com/v1",
   openai: "https://api.openai.com/v1",
@@ -36,7 +37,9 @@ const PLATFORM_KEY_ENV: Record<string, string[]> = {
   anthropic: ["VIBECODER_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY"],
   openai: ["VIBECODER_OPENAI_API_KEY", "OPENAI_API_KEY"],
   opencode: ["VIBECODER_OPENCODE_API_KEY", "OPENCODE_API_KEY"],
-  // zai: ["VIBECODER_ZAI_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"],
+  zai: ["VIBECODER_ZAI_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"],
+  cerebras: ["VIBECODER_CEREBRAS_API_KEY", "CEREBRAS_API_KEY"],
+  huggingface: ["VIBECODER_HF_TOKEN", "HF_TOKEN", "HUGGINGFACE_API_KEY"],
   google: ["VIBECODER_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"],
   groq: ["VIBECODER_GROQ_API_KEY", "GROQ_KEY", "GROQ_API_KEY"],
   openrouter: ["VIBECODER_OPENROUTER_API_KEY", "OPENROUTER_KEY", "OPENROUTER_API_KEY"],

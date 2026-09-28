@@ -108,7 +108,13 @@ API keys) or the platform's env var.
 
 | Model | Provider | Platform env var | Notes |
 | --- | --- | --- | --- |
-| Gemini Flash (default) | Google | `GEMINI_API_KEY` | free tier with quotas |
+| OpenRouter Free (default) | OpenRouter | `OPENROUTER_API_KEY` | `openrouter/free` alias, 50 req/day per key |
+| GPT-OSS 120B | Groq | `GROQ_API_KEY` | free plan with limits |
+| Cerebras Llama 70B | Cerebras | `CEREBRAS_API_KEY` | free plan, fastest fallback |
+| GLM Flash | Z.ai | `ZAI_API_KEY` | `glm-4.5-flash` priced at $0 |
+| HF GPT-OSS 120B | Hugging Face | `HF_TOKEN` | router free credit, small monthly budget |
+| Nemotron | NVIDIA NIM | `NVIDIA_API_KEY` | trial endpoint limits |
+| Gemini Flash | Google | `GEMINI_API_KEY` | free tier with quotas, tried last (503s under load) |
 | Claude / GPT | Anthropic, OpenAI | `VIBECODER_ANTHROPIC_API_KEY`, `VIBECODER_OPENAI_API_KEY` | credits tier |
 
 **Do not use an OpenCode Zen key for free models.** Zen gates its free tier to

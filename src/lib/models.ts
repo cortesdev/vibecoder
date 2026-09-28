@@ -4,7 +4,7 @@
 // free to run — the user pays the provider directly.
 
 export type Tier = "free" | "credits";
-export type ProviderId = "vibecoder" | "opencode" | "google" | "groq" | "openrouter" | "nvidia" | "anthropic" | "openai";
+export type ProviderId = "vibecoder" | "opencode" | "google" | "groq" | "openrouter" | "nvidia" | "anthropic" | "openai" | "cerebras" | "huggingface" | "zai";
 
 
 
@@ -61,6 +61,52 @@ export const MODELS: ModelDef[] = [
     note: "OpenRouter's free route — 50 requests/day per key, shared by every user of that key.",
   },
   {
+    id: "cerebras-llama",
+    label: "Cerebras Llama",
+    provider: "cerebras",
+    tier: "free",
+    cost: 0,
+    // Verified against inference-docs.cerebras.ai/resources/openai: base URL
+    // https://api.cerebras.ai/v1 is OpenAI-compatible, model field selects
+    // the Shared Inference target. llama-3.3-70b is the long-standing free
+    // high-throughput coder on this tier.
+    model: "llama-3.3-70b",
+    byok: true,
+    contextLimit: 128000,
+    note: "Available on Cerebras' free plan, subject to account and token limits.",
+  },
+  {
+    id: "glm-flash",
+    label: "GLM Flash",
+    provider: "zai",
+    tier: "free",
+    cost: 0,
+    // Verified against docs.z.ai (api-reference/llm/chat-completion lists the
+    // model enum; guides/overview/pricing lists GLM-4.5-Flash at $0 for input,
+    // cached input and output). Base URL https://api.z.ai/api/paas/v4 is
+    // OpenAI-compatible.
+    model: "glm-4.5-flash",
+    byok: true,
+    contextLimit: 128000,
+    note: "Z.ai's free tier: GLM-4.5-Flash is priced at $0. Key from z.ai, or served by the platform.",
+  },
+  {
+    id: "hf-gpt-oss",
+    label: "HF GPT-OSS",
+    provider: "huggingface",
+    tier: "free",
+    cost: 0,
+    // Verified against huggingface.co/docs/inference-providers: router base
+    // URL https://router.huggingface.co/v1 is OpenAI-compatible for chat
+    // completions, auth via HF_TOKEN. Free tier is a small monthly credit
+    // ($0.10/mo on free accounts), so this sits behind the bigger free plans
+    // in FREE_PREFERENCE.
+    model: "openai/gpt-oss-120b",
+    byok: true,
+    contextLimit: 131072,
+    note: "Hugging Face Inference Providers free credit (HF_TOKEN), subject to monthly credit limits.",
+  },
+  {
     id: "nemotron",
     label: "Nemotron (NVIDIA)",
     provider: "nvidia",
@@ -90,21 +136,6 @@ export const MODELS: ModelDef[] = [
     contextLimit: 1000000,
     note: "Google's free tier (quota-limited): key from Google AI Studio, or served by the platform.",
   },
-  // {
-  //   id: "glm-flash",
-  //   label: "GLM Flash",
-  //   provider: "zai",
-  //   tier: "free",
-  //   cost: 0,
-  //   // Verified against docs.z.ai (api-reference/llm/chat-completion lists the
-  //   // model enum; guides/overview/pricing lists GLM-4.7-Flash at $0 for input,
-  //   // cached input and output). glm-4.5-flash and glm-4.6v-flash are also $0.
-  //   // "glm-4.7-flashx" is the paid sibling — do not confuse the two.
-  //   model: "glm-4.7-flash",
-  //   byok: true,
-  //   contextLimit: 200000,
-  //   note: "Z.ai's free tier: GLM-4.7-Flash is priced at $0. Key from z.ai, or served by the platform.",
-  // },
   {
     id: "sonnet",
     label: "Claude Sonnet",
@@ -161,14 +192,15 @@ export function getModel(id: string): ModelDef | null {
 export const DEFAULT_MODEL_ID = "openrouter-free";
 
 /**
- * Free models in preference order. Groq answers first: it returned a one-file
- * website in ~2s in testing, while Gemini's default id was answering 503
- * UNAVAILABLE. Gemini stays in the chain — its free tier is the strongest free
- * coder when it is up — but it is tried last, so a flaky upstream costs the user
- * a wait only after the healthy providers have both refused. OpenRouter sits in
- * the middle and is capped at 50 free requests/day per key.
+ * Free models in preference order. Fast high-throughput free plans answer
+ * first (OpenRouter alias, Groq, Cerebras), then $0-priced GLM Flash, then
+ * the smaller-credit pools (Hugging Face router, NVIDIA NIM trial).
+ * Gemini stays in the chain — its free tier is the strongest free coder
+ * when it is up — but it is tried last, so a flaky upstream costs the user
+ * a wait only after the healthy providers have refused. OpenRouter sits
+ * first and is capped at 50 free requests/day per key.
  */
-const FREE_PREFERENCE = ["openrouter-free", "groq-gpt-oss", "nemotron", "gemini-flash"];
+const FREE_PREFERENCE = ["openrouter-free", "groq-gpt-oss", "cerebras-llama", "glm-flash", "hf-gpt-oss", "nemotron", "gemini-flash"];
 
 export function freeModels(): ModelDef[] {
   const rank = (m: ModelDef) => {
@@ -185,7 +217,9 @@ export const PROVIDER_META: Record<ProviderId, { label: string; blurb: string }>
   nvidia: { label: "NVIDIA NIM", blurb: "Nemotron models, free trial endpoint" },
   vibecoder: { label: "Vibecoder Hosted", blurb: "Pay with credits" },
   opencode: { label: "OpenCode Zen", blurb: "Paid Zen models (its free tier is app-only)" },
-  // zai: { label: "Z.ai", blurb: "Free GLM Flash" },
+  cerebras: { label: "Cerebras", blurb: "Free plan with usage limits" },
+  huggingface: { label: "Hugging Face", blurb: "Inference Providers free credit" },
+  zai: { label: "Z.ai", blurb: "Free GLM Flash" },
   google: { label: "Google", blurb: "Free Gemini tier" },
   anthropic: { label: "Anthropic", blurb: "Hosted — billed in credits" },
   openai: { label: "OpenAI", blurb: "Hosted — billed in credits" },

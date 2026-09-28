@@ -7,6 +7,8 @@ import GlobeBackground from "@/components/globe-background";
 import DownloadButtons from "@/components/download-buttons";
 import UpgradeCard from "@/components/upgrade-card";
 import VideoIntro from "@/components/video-intro";
+import EmberBackground from "@/components/ember-background";
+import { CursorRing, Reveal, Words, spot } from "@/components/landing-motion";
 import { testEnabled } from "@/lib/env";
 import { siteConfig } from "@/lib/site";
 import type { Metadata } from "next";
@@ -110,6 +112,7 @@ const jsonLd = {
 
 export default function HomeClient() {
   const [introDone, setIntroDone] = useState(false);
+  const [openFaq, setOpenFaq] = useState(0);
   const terminalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -127,6 +130,8 @@ export default function HomeClient() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
+      <EmberBackground />
+      <CursorRing />
       <SiteNav />
       <main id="main">
         {/* Hero */}
@@ -139,10 +144,9 @@ export default function HomeClient() {
               Free · open source · MIT
             </p>
             <h1
-              className="display hero-rise mx-auto mt-4 max-w-[840px]"
-              style={{ "--i": 1 } as React.CSSProperties}
+              className="display mx-auto mt-4 max-w-[840px]"
             >
-              The AI coding agent that lives on your desktop.
+              <Words text="The AI coding agent that lives on your desktop." />
             </h1>
             <p
               className="hero-rise muted mx-auto mt-5 max-w-[620px] text-[19px]"
@@ -176,15 +180,17 @@ export default function HomeClient() {
         {/* Pillars */}
         <section className="hairline-t px-6 py-24" aria-labelledby="pillars-h">
           <div className="mx-auto max-w-[1000px]">
-            <h2 id="pillars-h" className="h2 text-center">
-              Built like the agents you pay for. Priced like the tools you own.
-            </h2>
+            <Reveal>
+              <h2 id="pillars-h" className="h2 text-center">
+                Built like the agents you pay for. Priced like the tools you own.
+              </h2>
+            </Reveal>
             <div className="mt-14 grid gap-x-10 gap-y-12 sm:grid-cols-2">
-              {pillars.map((p) => (
-                <div key={p.title}>
+              {pillars.map((p, i) => (
+                <Reveal key={p.title} delay={i * 90}>
                   <h3 className="text-[19px] font-semibold">{p.title}</h3>
                   <p className="muted mt-2">{p.body}</p>
-                </div>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -193,10 +199,13 @@ export default function HomeClient() {
         {/* Quick start */}
         <section className="px-6 py-24" style={{ background: "var(--bg-raised)" }} aria-labelledby="quickstart-h">
           <div className="mx-auto max-w-[720px]">
-            <h2 id="quickstart-h" className="h2 text-center">
-              Three commands to first diff.
-            </h2>
-            <div className="card mono mt-10 space-y-4 p-6 text-[13.5px] leading-relaxed">
+            <Reveal>
+              <h2 id="quickstart-h" className="h2 text-center">
+                Three commands to first diff.
+              </h2>
+            </Reveal>
+            <Reveal delay={110}>
+            <div className="card mono mt-10 space-y-4 p-6 text-[13.5px] leading-relaxed spot-card" onMouseMove={spot}>
               <p>
                 <span style={{ color: "var(--ink-3)" }}># 1. Install the CLI (or grab the desktop app below)</span>
                 <br />
@@ -213,6 +222,7 @@ export default function HomeClient() {
                 <span style={{ color: "var(--green, var(--good))" }}></span> refactor auth to use sessions — plan first
               </p>
             </div>
+            </Reveal>
           </div>
         </section>
 

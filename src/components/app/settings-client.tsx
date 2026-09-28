@@ -12,9 +12,13 @@ import type { ModelReadiness } from "@/lib/readiness";
 // only ever buys its *paid* models — promising free Zen models here is what
 // sent users into an unexplainable 403.
 const KEY_PROVIDERS = [
-  // Z.ai (GLM Flash) is commented out along with the free fallback chain.
-  // { id: "zai", label: "Z.ai", hint: "Free key at z.ai — GLM Flash runs at $0." },
   { id: "google", label: "Google AI Studio", hint: "Free key at aistudio.google.com — Gemini Flash on Google's free tier (daily quota)." },
+  { id: "cerebras", label: "Cerebras", hint: "Free key at cloud.cerebras.ai — fast Llama 70B on the free plan." },
+  { id: "groq", label: "Groq", hint: "Free key at console.groq.com — GPT-OSS 120B on the free plan." },
+  { id: "huggingface", label: "Hugging Face", hint: "Free token at hf.co/settings/tokens — GPT-OSS via the Inference Providers router (small monthly credit)." },
+  { id: "zai", label: "Z.ai", hint: "Free key at z.ai — GLM Flash runs at $0." },
+  { id: "openrouter", label: "OpenRouter", hint: "Key at openrouter.ai — free route, 50 requests/day per key." },
+  { id: "nvidia", label: "NVIDIA NIM", hint: "Free key at build.nvidia.com — Nemotron trial endpoint." },
   { id: "opencode", label: "OpenCode Zen", hint: "Key from opencode.ai — paid Zen models only; Zen's free tier works only inside the OpenCode app." },
   { id: "anthropic", label: "Anthropic", hint: "Optional: your own Claude key, billed by Anthropic instead of from credits." },
   { id: "openai", label: "OpenAI", hint: "Optional: your own OpenAI key, billed by OpenAI instead of from credits." },
