@@ -188,7 +188,10 @@ describe("model readiness", () => {
       "Add 10 credits to unlock 1000 free model requests per day",
     );
     expect(result.message).not.toContain("wait a moment and retry");
-    expect(result.action).toEqual({ label: "Add 10 credits", href: "/agent/settings#credits" });
+    // The limit is the provider's, not ours — the action opens the provider's
+    // own page (never a removed in-app credits section).
+    expect(result.action?.label).toBe("Add 10 credits");
+    expect(result.action?.href).toMatch(/^https:\/\//);
   });
 
   it("carries the Add-key control when a model is not set up yet", async () => {

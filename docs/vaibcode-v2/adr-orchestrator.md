@@ -44,6 +44,10 @@ or `failed` with an actionable reason at any step:
 Owns provider config, capability declaration, timeouts, fallback, usage,
 errors. `ModelDef` gains `capabilities: {vision, tools}`. `LlmAgent` and
 `MockAgent` stay behind `Agent`; the orchestrator never touches fetch.
+**Update:** there are no credit plans — every `ModelDef` is `tier: "free"`,
+`cost: 0`. `engine.ts` walks the key-based free chain only; the credit
+debit/refund branch is removed. `credits.ts` and the ledger tables remain
+dormant so billing can be restored without a schema change.
 
 ### 4. Preview service (`lib/preview/*` + pane)
 Unchanged contract: stored files → isolated document → diagnostics. Gains a

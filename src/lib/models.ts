@@ -1,7 +1,9 @@
-// Model registry — single source of truth for the picker, the engine, and
-// pricing. Platform-hosted models are billed in credits (1 credit = $0.10)
-// at ~2× our raw provider cost: the 50% platform margin. BYO-key models are
-// free to run — the user pays the provider directly.
+// Model registry — single source of truth for the picker, the engine, and the
+// provider catalogue. Every model is free: there are no credit plans or paid
+// tiers. A model runs when a key for its provider is available — the user's own
+// (BYO) or the platform's env key — and the first one that answers in free-chain
+// preference order wins. Credit billing is intentionally disabled; the dormant
+// ledger lives in ./credits.ts and can be restored without a schema change.
 
 export type Tier = "free" | "credits";
 export type ProviderId = "vibecoder" | "opencode" | "google" | "groq" | "openrouter" | "nvidia" | "anthropic" | "openai" | "cerebras" | "huggingface" | "zai" | "custom";
@@ -171,44 +173,44 @@ export const MODELS: ModelDef[] = [
     id: "sonnet",
     label: "Claude Sonnet",
     provider: "anthropic",
-    tier: "credits",
-    cost: 8, // ≈ $0.80/prompt raw · billed 8 credits (50% margin)
+    tier: "free",
+    cost: 0,
     model: "claude-sonnet-4-5",
-    byok: false,
+    byok: true,
     contextLimit: 200000,
-    note: "Best for whole features. Billed from credits.",
+    note: "Best for whole features. Bring your own Anthropic key — no credits.",
     capabilities: { vision: true, tools: true },
   },
   {
     id: "haiku",
     label: "Claude Haiku",
     provider: "anthropic",
-    tier: "credits",
-    cost: 1, // ≈ $0.05–0.10/prompt raw · billed 1 credit
+    tier: "free",
+    cost: 0,
     model: "claude-haiku-4-5",
-    byok: false,
+    byok: true,
     contextLimit: 200000,
-    note: "Fast small edits. Billed from credits.",
+    note: "Fast small edits. Bring your own Anthropic key — no credits.",
     capabilities: { vision: true, tools: true },
   },
   {
     id: "gpt",
     label: "GPT (OpenAI)",
     provider: "openai",
-    tier: "credits",
-    cost: 4, // ≈ $0.40/prompt raw · billed 4 credits
+    tier: "free",
+    cost: 0,
     model: "gpt-4o",
-    byok: false,
+    byok: true,
     contextLimit: 200000,
-    note: "Balanced quality. Billed from credits.",
+    note: "Balanced quality. Bring your own OpenAI key — no credits.",
     capabilities: { vision: true, tools: true },
   },
   {
     id: "openrouter-paid",
     label: "OpenRouter (BYOK)",
     provider: "openrouter",
-    tier: "credits",
-    cost: 0, // user pays provider directly
+    tier: "free",
+    cost: 0,
     model: "openrouter/auto",
     byok: true,
     contextLimit: 200000,
@@ -229,11 +231,15 @@ export const DEFAULT_MODEL_ID = "openrouter-free";
 /**
  * Free models in preference order. Fast high-throughput free plans answer
  * first (OpenRouter alias, Groq, Cerebras), then $0-priced GLM Flash, then
- * the smaller-credit pools (Hugging Face router, NVIDIA NIM trial).
+ * the smaller free pools (Hugging Face router, NVIDIA NIM trial).
  * Gemini stays in the chain — its free tier is the strongest free coder
  * when it is up — but it is tried last, so a flaky upstream costs the user
  * a wait only after the healthy providers have refused. OpenRouter sits
  * first and is capped at 50 free requests/day per key.
+ *
+ * Models absent from this list (the former paid tier — Sonnet, Haiku, GPT,
+ * OpenRouter auto) sort after every preferred model, so an explicitly chosen
+ * Claude/GPT run never auto-substitutes ahead of a healthy free model.
  */
 const FREE_PREFERENCE = ["openrouter-free", "custom-auto", "groq-gpt-oss", "cerebras-llama", "glm-flash", "hf-gpt-oss", "nemotron", "gemini-flash"];
 
@@ -272,5 +278,5 @@ export const BYO_PROVIDERS: ProviderId[] = (Object.keys(PROVIDER_META) as Provid
   (p) => p !== "vibecoder",
 );
 
-/** Fallback chain when a paid run can't be billed: → free default. */
+/** The model a run falls back to when nothing else in the chain answers. */
 export const FREE_FALLBACK_ID = "openrouter-free";

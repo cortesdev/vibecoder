@@ -35,7 +35,6 @@ export default function ProjectBuilder({
   initialModelId,
   initialPresetId = null,
   readiness = [],
-  balance = 0,
   integrations = [],
   integrationCounts = {},
 }: {
@@ -49,7 +48,6 @@ export default function ProjectBuilder({
   initialModelId?: string;
   initialPresetId?: string | null;
   readiness?: ModelReadiness[];
-  balance?: number;
   integrations?: IntegrationService[];
   integrationCounts?: Record<string, number>;
 }) {
@@ -93,7 +91,7 @@ export default function ProjectBuilder({
   // One live readiness snapshot for the picker and the send row, so both agree
   // on which model will actually run and neither substitutes silently.
   const { readiness: liveReadiness, secondsLeft } = useLiveReadiness(readiness);
-  const effectiveNote = effectiveStatement(resolveEffectiveModel(modelId, liveReadiness, balance));
+  const effectiveNote = effectiveStatement(resolveEffectiveModel(modelId, liveReadiness));
   const [busy, setBusy] = useState(false);
   const [sendError, setSendError] = useState("");
   const router = useRouter();
@@ -347,7 +345,6 @@ export default function ProjectBuilder({
                 onChange={setModelId}
                 readiness={liveReadiness}
                 secondsLeft={secondsLeft}
-                balance={balance}
               />
               <button type="submit" className="btn btn-primary btn-sm ml-auto" disabled={busy || (!text.trim() && picked.filter((p) => !p.error).length === 0)}>
                 {busy ? "Sending…" : "Send"}

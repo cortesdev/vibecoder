@@ -57,19 +57,36 @@ export interface ModelReadiness {
 
 const KEYS_ACTION = { label: "Add key", href: "/agent/settings#keys" } as const;
 
+/** The provider's own billing/console page, where its limit is explained. */
+const PROVIDER_BILLING: Partial<Record<ProviderId, string>> = {
+  openrouter: "https://openrouter.ai/settings/credits",
+  openai: "https://platform.openai.com/settings/organization/billing/overview",
+  anthropic: "https://console.anthropic.com/settings/billing",
+  google: "https://aistudio.google.com/apikey",
+  cerebras: "https://cloud.cerebras.ai",
+  groq: "https://console.groq.com/keys",
+  huggingface: "https://huggingface.co/settings/tokens",
+  nvidia: "https://build.nvidia.com",
+  zai: "https://z.ai",
+  opencode: "https://opencode.ai",
+};
+
 /** The control for a state, if the app can do anything about it. */
 export function readinessAction(
   status: ReadinessStatus,
   detail = "",
+  provider?: ProviderId,
 ): { label: string; href: string } | undefined {
   if (status === "no_key" || status === "rejected") return KEYS_ACTION;
   if (status === "model_missing") return { label: "Open settings", href: "/agent/settings" };
+  // A free-quota upsell is the provider's limit, not ours: point at the
+  // provider's own page. There are no app credits to buy.
   if (status === "rate_limited" && creditUpsellHint(detail)) {
+    const href = provider ? PROVIDER_BILLING[provider] : undefined;
+    if (!href) return undefined;
     const match = detail.match(/add\s+(\d+)\s+credits?/i);
     const credits = match ? Number(match[1]) : 0;
-    return credits > 0
-      ? { label: `Add ${credits} credit${credits === 1 ? "" : "s"}`, href: "/agent/settings#credits" }
-      : { label: "Add credits", href: "/agent/settings#credits" };
+    return { label: credits > 0 ? `Add ${credits} credits` : "Add credits", href };
   }
   return undefined;
 }
@@ -165,7 +182,9 @@ export async function checkModelReadiness(userId: string, model: ModelDef): Prom
       ...common,
       status,
       message: refusalMessage(listed.status, listed.detail, access),
-      ...(readinessAction(status, listed.detail) ? { action: readinessAction(status, listed.detail) } : {}),
+      ...(readinessAction(status, listed.detail, model.provider)
+        ? { action: readinessAction(status, listed.detail, model.provider) }
+        : {}),
     };
   }
   const catalogSize = !("unsupported" in listed) && listed.ok ? listed.ids.length : undefined;
@@ -205,7 +224,9 @@ export async function checkModelReadiness(userId: string, model: ModelDef): Prom
       ...common,
       status,
       message: refusalMessage(res.status, detail, access),
-      ...(readinessAction(status, detail) ? { action: readinessAction(status, detail) } : {}),
+      ...(readinessAction(status, detail, model.provider)
+        ? { action: readinessAction(status, detail, model.provider) }
+        : {}),
       ...(catalogSize === undefined ? {} : { catalogSize }),
       ...(notInCatalog === undefined ? {} : { notInCatalog }),
     };

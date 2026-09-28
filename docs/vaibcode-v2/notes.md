@@ -253,6 +253,39 @@ from HTTP status. ADR: `docs/vaibcode-v2/adr-orchestrator.md`.
 - Gates: tsc clean; vitest 216 pass / 7 pre-existing fail (no regressions,
   +27 new tests); playwright 4/4; build clean; lint 0 errors.
 
+### Credits removed — every model free (owner request, current)
+- **Why:** the credit paywall blocked the owner from using the app at all (0 credits,
+  no BYOK keys → every model unrunnable). Paid plans are removed "for now".
+- `models.ts`: `sonnet`, `haiku`, `gpt`, `openrouter-paid` move from `tier: "credits"`
+  to `tier: "free"`, `cost: 0`, `byok: true`. Nothing in the registry is paid.
+  `FREE_PREFERENCE` is unchanged, so the former paid models sort last and never
+  auto-substitute ahead of a healthy free model.
+- `engine.ts`: the credit branch is gone — no `debitForRun`/`refundRun`, no drained-wallet
+  fallback. Every run walks the key-based free chain (user key → platform key → next
+  preferred model), deterministically. The unconfigured-provider path now fails honestly
+  instead of degrading to `MockAgent`.
+- UI: the settings → Credits section, credit packs, the sidebar balance chip, and the
+  picker's `N cr` / "Hosted — billed from credits" / "Add credits" are removed. The picker
+  keeps the three honest states (runnable / needs key → "Add key" / temporarily down →
+  countdown + "Try anyway" + "Will run").
+- Free-quota 429 upsells (OpenRouter's "Add 10 credits…") still surface **verbatim**, but the
+  action now opens the **provider's own** billing page — there are no app credits to buy.
+- **Dormant, not deleted (reversible):** `credits.ts`, `freewallet.ts`, `CreditWallet`/
+  `CreditTxn`/`FreeWallet` tables, `/api/app/credits*`, `/api/app/wallet`, and the credit
+  leg of the Stripe webhook. No Prisma migration.
+- Kept deliberately: the **$49 Pro license** (`/api/upgrade/checkout`, `upgrade-card.tsx`,
+  the home upgrade CTA) — a separate product line from credit packs.
+- Tests: `engine.freewallet.test.ts` (wallet/cooldown/debit — removed behavior) retired;
+  `engine.free.test.ts` added for the free chain. `models.test.ts` now asserts **no model is
+  paywalled**. `model-selection.test.ts` drops the `no_credits` cases.
+- Gates: tsc clean; vitest **233 passed / 0 failed** (the 7 formerly-known failures are gone
+  with the removed feature); `pnpm build` clean; eslint 0 errors on touched files;
+  Playwright **7/7** (added: "a plain hello builds, with no plan-approval payload").
+- Env note (not ours): `require('jsdom')` throws `webidl.util.markAsUncloneable is not a
+  function` on Node v20.20.2, so jsdom component tests (`model-picker.test.ts`,
+  `video-intro.test.ts`) cannot start in this environment. Pre-existing; the picker's
+  logic is covered by the node-env `model-selection.test.ts`.
+
 ### Slice 4 — editor diagnostics, integrations, vision coverage (complete)
 - Turn validation now reaches the Editor: `applyValidation` maps the
   response's per-file errors into the existing diagnostics store, a manual

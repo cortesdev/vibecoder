@@ -26,13 +26,14 @@ describe("MockAgent", () => {
   it("answers a plain hello with edits, never a plan-approval payload", async () => {
     const agent = new MockAgent();
     const result = await agent.run("hello", { "src/App.tsx": "x" });
+    const asRecord = result as Record<string, unknown>;
     // "hello" must build, not open a review gate.
     expect(result.edits.length).toBeGreaterThan(0);
-    expect(result.plan).toBeUndefined();
-    expect(result.suggestions).toBeUndefined();
-    expect(result).not.toHaveProperty("pendingPlan");
-    expect(result).not.toHaveProperty("approval");
-    expect(result).not.toHaveProperty("requiresApproval");
+    expect(asRecord.plan).toBeUndefined();
+    expect(asRecord.suggestions).toBeUndefined();
+    expect(asRecord).not.toHaveProperty("pendingPlan");
+    expect(asRecord).not.toHaveProperty("approval");
+    expect(asRecord).not.toHaveProperty("requiresApproval");
   });
 
   it("creates src/App.tsx when the project is empty", async () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Check, KeyRound, RefreshCw, Trash2, Wallet } from "lucide-react";
+import { AlertTriangle, Check, KeyRound, RefreshCw, Trash2 } from "lucide-react";
 import { readinessLabel, readinessColor } from "./model-picker";
 import type { ModelReadiness } from "@/lib/readiness";
 
@@ -23,12 +23,6 @@ const KEY_PROVIDERS = [
   { id: "anthropic", label: "Anthropic", hint: "Optional: your own Claude key, billed by Anthropic instead of from credits." },
   { id: "openai", label: "OpenAI", hint: "Optional: your own OpenAI key, billed by OpenAI instead of from credits." },
 ] as const;
-
-interface Pack {
-  credits: number;
-  priceUsd: number;
-  label: string;
-}
 
 interface KeysResponse {
   ok?: boolean;
@@ -64,19 +58,9 @@ function ProviderStatus({ states }: { states: ModelReadiness[] }) {
 
 export default function SettingsClient({
   initialProviders,
-  balance,
-  packs,
-  demoCheckout,
-  freeGranted,
-  freeBalance,
   initialReadiness,
 }: {
   initialProviders: string[];
-  balance: number;
-  packs: Pack[];
-  demoCheckout: boolean;
-  freeGranted: number;
-  freeBalance: number;
   initialReadiness: ModelReadiness[];
 }) {
   const [providers, setProviders] = useState<string[]>(initialProviders);
@@ -84,7 +68,6 @@ export default function SettingsClient({
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const [buyMsg, setBuyMsg] = useState("");
 
   function absorb(data: KeysResponse) {
     if (Array.isArray(data.providers)) setProviders(data.providers);
@@ -127,22 +110,6 @@ export default function SettingsClient({
     const res = await fetch("/api/app/keys?refresh=1");
     absorb((await res.json().catch(() => ({}))) as KeysResponse);
     setBusy(null);
-  }
-
-  async function buyPack(credits: number) {
-    setBuyMsg("Opening checkout…");
-    const res = await fetch("/api/app/credits/checkout", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ pack: credits, mode: demoCheckout ? "test" : "live" }),
-    });
-    const data = (await res.json()) as { ok: boolean; url?: string; error?: string };
-    const url = data.url;
-    if (data.ok && url) {
-      window.location.assign(url);
-    } else {
-      setBuyMsg(data.error ?? "Checkout unavailable right now.");
-    }
   }
 
   return (
@@ -223,70 +190,6 @@ export default function SettingsClient({
             );
           })}
         </div>
-      </section>
-
-      {/* Free-token wallet */}
-      <section aria-labelledby="freewallet-h">
-        <h2 id="freewallet-h" className="text-[17px] font-semibold">
-          Free tokens
-        </h2>
-        <p className="muted mt-1 text-[13.5px]">
-          A one-time sign-up allowance that pays for hosted models before credits do —
-          spent as your runs use them. Free models stay free no matter what.
-        </p>
-        <div className="card mt-4 p-4">
-          <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
-            <div className="flex items-center gap-2">
-              <Wallet size={15} aria-hidden="true" style={{ color: "var(--ink-2)" }} />
-              <span className="text-[13px]" style={{ color: "var(--ink-3)" }}>
-                Remaining
-              </span>
-              <span className="mono text-[17px] font-semibold" style={{ color: freeBalance > 0 ? "var(--good)" : "var(--ink)" }}>
-                {freeBalance.toLocaleString()}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[13px]" style={{ color: "var(--ink-3)" }}>
-                Granted
-              </span>
-              <span className="mono text-[14px]">{freeGranted.toLocaleString()}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[13px]" style={{ color: "var(--ink-3)" }}>
-                Used
-              </span>
-              <span className="mono text-[14px]">{(freeGranted - freeBalance).toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Credits */}
-      <section id="credits" aria-labelledby="credits-h">
-        <h2 id="credits-h" className="text-[17px] font-semibold">
-          Credits
-        </h2>
-        <p className="muted mt-1 text-[13.5px]">
-          Balance: <strong style={{ color: "var(--good)" }}>{balance} credits</strong> · hosted models debit per prompt ·
-          free models are always free.
-        </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          {packs.map((p) => (
-            <div key={p.credits} className="card flex flex-col p-4">
-              <span className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: "var(--ink-3)" }}>
-                {p.label}
-              </span>
-              <span className="mt-1 text-[22px] font-bold tracking-[-0.02em]">{p.credits}</span>
-              <span className="muted text-[13px]">credits</span>
-              <button type="button" className="btn btn-primary btn-sm mt-3" onClick={() => buyPack(p.credits)}>
-                ${p.priceUsd}
-              </button>
-            </div>
-          ))}
-        </div>
-        <p aria-live="polite" className="mt-2 min-h-[20px] text-[13px]" style={{ color: "var(--accent)" }}>
-          {buyMsg}
-        </p>
       </section>
     </div>
   );

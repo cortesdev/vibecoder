@@ -2,10 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
-import { getBalance, ensureWallet } from "@/lib/credits";
 import ThemeToggle from "@/components/theme-toggle";
 import SignOutButton from "@/components/sign-out-button";
-import { Cog, CreditCard, FolderOpen, Plus, ArrowUpCircle } from "lucide-react";
+import { Cog, FolderOpen, Plus, ArrowUpCircle } from "lucide-react";
 
 export default async function AppLayout({
   children,
@@ -15,15 +14,12 @@ export default async function AppLayout({
   const user = await currentUser();
   if (!user) redirect("/login");
 
-  const [projects, balance] = await Promise.all([
-    db.project.findMany({
-      where: { userId: user.id },
-      orderBy: { updatedAt: "desc" },
-      select: { id: true, name: true },
-      take: 20,
-    }),
-    ensureWallet(user.id).then(() => getBalance(user.id)),
-  ]);
+  const projects = await db.project.findMany({
+    where: { userId: user.id },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, name: true },
+    take: 20,
+  });
 
   return (
     <div className="flex  max-h-screen">
@@ -45,16 +41,6 @@ export default async function AppLayout({
         <nav className="flex flex-col gap-0.5 px-3 text-[14px]">
           <Link href="/app" className="sidebar-link">
             <Plus size={16} aria-hidden="true" /> New project
-          </Link>
-          <Link href="/app/settings" className="sidebar-link">
-            <CreditCard size={16} aria-hidden="true" />
-            Credits
-            <span
-              className="ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold"
-              style={{ background: "color-mix(in srgb, var(--good) 18%, transparent)", color: "var(--good)" }}
-            >
-              {balance}
-            </span>
           </Link>
           <Link href="/#upgrade" className="sidebar-link">
             <ArrowUpCircle size={16} aria-hidden="true" /> Upgrade

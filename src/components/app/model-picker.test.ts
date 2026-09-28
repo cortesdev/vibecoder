@@ -28,7 +28,7 @@ function state(over: Partial<ModelReadiness> & Pick<ModelReadiness, "modelId" | 
 function mount(readiness: ModelReadiness[]) {
   const onChange = vi.fn();
   render(
-    createElement(ModelPicker, { value: "gemini-flash", onChange, balance: 0, readiness }),
+    createElement(ModelPicker, { value: "gemini-flash", onChange, readiness }),
   );
   return onChange;
 }

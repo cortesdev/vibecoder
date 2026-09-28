@@ -13,13 +13,12 @@ import { effectiveStatement, resolveEffectiveModel, rowKind } from "@/lib/model-
 // model that cannot answer right now with a countdown to its next re-check.
 const REFRESH_MS = 60_000;
 
-// Model dropdown modeled on the OpenCode picker: Free badges on free models,
-// credit cost on hosted ones, provider footer.
-//
-// Three states, never one blanket "disabled":
+// Model dropdown. Every model is free — there are no credit plans — so a row is
+// only ever about one thing: whether its provider has a key. Three states,
+// never one blanket "disabled":
 //   runnable            -> enabled.
 //   not set up yet      -> cannot run, but carries the control that fixes it
-//                          ("Add key" / "Add credits") — never a dead end.
+//                          ("Add key") — never a dead end.
 //   temporarily down    -> the real countdown plus "Try anyway", and the model
 //                          the free chain would fall back to.
 // The chip and the menu footer say which model will actually run, so the free
@@ -83,15 +82,14 @@ export function useLiveReadiness(initial: ModelReadiness[]) {
       window.removeEventListener("focus", onFocus);
       window.clearTimeout(initial);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { readiness: ready, secondsLeft };
 }
 
-export function ModelBadge({ tier, cost }: { tier: ModelDef["tier"]; cost: number }) {
+export function ModelBadge({ tier }: { tier: ModelDef["tier"] }) {
   if (tier === "free") return <span className="tier-badge tier-badge-free">Free</span>;
-  return <span className="tier-badge tier-badge-credits">{cost} cr</span>;
+  return null;
 }
 
 /** Short state word for a picker row. null = nothing was checked yet. */
@@ -149,14 +147,12 @@ function readinessOf(
 export default function ModelPicker({
   value,
   onChange,
-  balance = 0,
   align = "left",
   readiness = [],
   secondsLeft = REFRESH_MS / 1000,
 }: {
   value: string;
   onChange: (id: string) => void;
-  balance?: number;
   align?: "left" | "right";
   readiness?: ModelReadiness[];
   /** Seconds until the next readiness probe; supplied by the caller's
@@ -170,7 +166,6 @@ export default function ModelPicker({
   const live = readiness;
   const states = Object.fromEntries(live.map((r) => [r.modelId, r]));
   const free = MODELS.filter((m) => m.tier === "free");
-  const paid = MODELS.filter((m) => m.tier === "credits");
 
   const currentState = readinessOf(states, current.id);
   const currentStatus = currentState?.status;
@@ -181,11 +176,10 @@ export default function ModelPicker({
   const liveFree = free.filter((m) => states[m.id]?.status === "live");
   const readyCount = liveFree.length;
 
-  const effective = resolveEffectiveModel(value, live, balance);
+  const effective = resolveEffectiveModel(value, live);
   const statement = effectiveStatement(effective);
   const currentSetupAction = setupAction(currentState);
-  const currentTemporary =
-    rowKind(currentStatus) === "temporary" && current.tier === "free";
+  const currentTemporary = rowKind(currentStatus) === "temporary";
 
   function choose(id: string) {
     onChange(id);
@@ -278,7 +272,7 @@ export default function ModelPicker({
                       {label}
                     </span>
                   )}
-                  <ModelBadge tier={m.tier} cost={m.cost} />
+                  <ModelBadge tier={m.tier} />
                   {kind === "runnable" && m.id === value && (
                     <Check size={14} aria-hidden="true" style={{ color: "var(--good)" }} />
                   )}
@@ -300,47 +294,6 @@ export default function ModelPicker({
                   >
                     Try anyway
                   </button>
-                )}
-              </div>
-            );
-          })}
-
-          <p className="px-2 pb-1 pt-3 text-[12px]" style={{ color: "var(--ink-3)" }}>
-            Hosted — billed from credits ({balance} left)
-          </p>
-          {paid.map((m) => {
-            const short = balance < m.cost;
-            return (
-              <div key={m.id} className="flex items-center gap-1">
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={m.id === value}
-                  className="menu-item flex-1"
-                  disabled={short}
-                  onClick={() => choose(m.id)}
-                >
-                  <span className="flex-1" style={short ? { opacity: 0.45 } : undefined}>
-                    {m.label}
-                  </span>
-                  <ModelBadge tier={m.tier} cost={m.cost} />
-                  {short && (
-                    <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
-                      0 cr
-                    </span>
-                  )}
-                  {!short && m.id === value && (
-                    <Check size={14} aria-hidden="true" style={{ color: "var(--good)" }} />
-                  )}
-                </button>
-                {short && (
-                  <a
-                    href="/agent/settings#credits"
-                    className="btn btn-secondary btn-sm shrink-0"
-                    onClick={() => setOpen(false)}
-                  >
-                    Add credits
-                  </a>
                 )}
               </div>
             );

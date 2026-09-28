@@ -3,11 +3,9 @@ import {
   getModel,
   freeModels,
   DEFAULT_MODEL_ID,
-  FREE_FALLBACK_ID,
   PROVIDER_META,
   type ModelDef,
 } from "./models";
-import { debitForRun, refundRun } from "./credits";
 
 import { LlmAgent, type LlmConfig } from "./agent/llm";
 import { MockAgent } from "./agent/mock";
@@ -190,9 +188,13 @@ async function resolveAgent(
   if (resolved.kind === "access") return { agent: new LlmAgent(resolved.access) };
   if (resolved.kind === "missing_key") return { agent: null, problem: resolved.problem };
 
-  // Credits tier with no platform key: degrade to the mock so the product
-  // still works end to end.
-  return { agent: new MockAgent() };
+  // Unreachable now that every model is free/BYOK, but if a provider ever has
+  // neither a user key nor a platform key it must fail honestly rather than
+  // silently degrade to the mock.
+  return {
+    agent: null,
+    problem: `${model.label} is not configured. Add a ${PROVIDER_META[model.provider].label} key in Settings → API keys.`,
+  };
 }
 
 /**
@@ -209,7 +211,6 @@ async function runFreeAnswer(
   userId: string,
   requested: ModelDef,
   run: FreeRun,
-  usedFallback = false,
 ): Promise<RunOutcome & { model: ModelDef; swapped: string }> {
   const chain = [requested, ...freeModels().filter((m) => m.id !== requested.id)];
   const failures: string[] = [];
@@ -227,9 +228,7 @@ async function runFreeAnswer(
       const swapped =
         candidate.id === requested.id
           ? ""
-          : usedFallback
-            ? `You're out of credits, so this ran on ${candidate.label} (free). Buy credits in Settings to use ${requested.label} again.`
-            : `${requested.label} was unavailable, so this ran on ${candidate.label} instead (also free).`;
+          : `${requested.label} was unavailable, so this ran on ${candidate.label} instead.`;
 
       return {
         ok: true,
@@ -243,7 +242,6 @@ async function runFreeAnswer(
         modelLabel: candidate.label,
         providerLabel: PROVIDER_META[candidate.provider].label,
         latencyMs: Date.now() - started,
-        ...(usedFallback ? { usedFallback: true } : {}),
         notice: swapped || undefined,
         model: candidate,
         swapped,
@@ -266,9 +264,10 @@ async function runFreeAnswer(
 }
 
 /**
- * Run one prompt through the requested model. Paid models debit credits
- * first (atomic); any failure refunds, and a drained wallet falls back to
- * the default free model so the user is never blocked.
+ * Run one prompt through the requested model, free of charge. There are no
+ * credit plans: the run walks the key-based free chain (user key → platform
+ * key → next preferred model), so a provider that is down or unconfigured
+ * falls through instead of dead-ending.
  */
 export async function runModelPrompt(input: {
   userId: string;
@@ -307,72 +306,13 @@ export async function runModelPrompt(input: {
   const requested = input.modelId ? getModel(input.modelId) : null;
   const model = requested ?? getModel(DEFAULT_MODEL_ID)!;
 
-  // --- Free / BYO path — no cooldown, no wallet gating (freebuff behavior) --
-  if (model.tier === "free") {
-    try {
-      return await runFreeAnswer(input.userId, model, input.run);
-    } catch (err) {
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : `${model.label} failed`,
-      };
-    }
-  }
-
-  // --- Credits path --------------------------------------------------------
-  const ref = `${input.projectId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
-
-  const debited = await debitForRun({
-    userId: input.userId,
-    cost: model.cost,
-    ref,
-    note: model.label,
-  });
-
-  if (!debited) {
-    const fallback = getModel(FREE_FALLBACK_ID)!;
-    try {
-      return await runFreeAnswer(input.userId, fallback, input.run, true);
-    } catch (err) {
-      return {
-        ok: false,
-        error: `Out of credits, and the free fallback failed: ${
-          err instanceof Error ? err.message : "unknown error"
-        }`,
-      };
-    }
-  }
-
-  const { agent } = await resolveAgent(input.userId, model);
-  if (!agent) {
-    await refundRun({ userId: input.userId, cost: model.cost, ref });
-    return { ok: false, error: "Model unavailable — credits refunded." };
-  }
-
+  // Every model is free-tier now (no credit plans, no wallet, no billing).
   try {
-    const started = Date.now();
-    const { edits, reply, usage, plan, suggestions, skillIds } = await input.run(agent);
-    return {
-      ok: true,
-      edits,
-      reply,
-      usage,
-      plan,
-      suggestions,
-      skillIds,
-      modelId: model.id,
-      modelLabel: model.label,
-      providerLabel: PROVIDER_META[model.provider].label,
-      latencyMs: Date.now() - started,
-      creditsSpent: model.cost,
-    };
+    return await runFreeAnswer(input.userId, model, input.run);
   } catch (err) {
-    await refundRun({ userId: input.userId, cost: model.cost, ref });
     return {
       ok: false,
-      error: `${model.label} failed — your ${model.cost} credit${model.cost === 1 ? "" : "s"} were refunded. ${
-        err instanceof Error ? err.message : ""
-      }`,
+      error: err instanceof Error ? err.message : `${model.label} failed`,
     };
   }
 }

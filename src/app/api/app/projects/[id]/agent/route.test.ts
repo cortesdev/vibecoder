@@ -64,6 +64,29 @@ describe("POST .../agent", () => {
     expect(input.agent).toBe("auto");
   });
 
+  it("returns a completed turn with no plan-approval payload", async () => {
+    mocks.runTurn.mockResolvedValue({
+      status: "completed",
+      reply: "done",
+      modelId: "mock",
+      modelLabel: "Mock Agent",
+      changedPaths: ["src/App.tsx"],
+      validation: { ok: true, errors: [] },
+    });
+    const form = new FormData();
+    form.set("message", "hello");
+    form.set("agent", "mock");
+    const res = await POST(req(form), params);
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Record<string, unknown>;
+    expect(data.status).toBe("completed");
+    expect((data.changedPaths as string[]).length).toBeGreaterThan(0);
+    expect(data.validation).toMatchObject({ ok: true });
+    for (const key of ["plan", "pendingPlan", "approval", "requiresApproval", "suggestions"]) {
+      expect(data, `response must not carry ${key}`).not.toHaveProperty(key);
+    }
+  });
+
   it("passes the mock seam through only as requested", async () => {
     mocks.runTurn.mockResolvedValue({ status: "completed", reply: "m", changedPaths: [] });
     const form = new FormData();

@@ -205,16 +205,17 @@ const CREDIT_UPSELL = /add\s+(\d+)\s+credits?/i;
 /**
  * A 429 whose body is a paid upsell (OpenRouter's "Rate limit exceeded:
  * free-models-per-day. Add 10 credits to unlock 1000 free model requests per
- * day") is not something "waiting a moment" fixes. When the provider itself
- * names a credit amount, quote that amount back as the action instead of the
- * generic retry advice — the user can actually do it.
+ * day") is not something "waiting a moment" fixes. The limit is the
+ * provider's, so its own credit amount is turned into the action — not
+ * generic retry advice. (The binding detail is already quoted verbatim by
+ * refusalMessage, so this adds only the fix.)
  */
-export function creditUpsellHint(detail: string): string | undefined {
+export function creditUpsellHint(detail: string, who = "the provider"): string | undefined {
   const match = detail.match(CREDIT_UPSELL);
   if (!match) return undefined;
   const credits = Number(match[1]);
   if (!Number.isFinite(credits) || credits <= 0) return undefined;
-  return `Add ${credits} credit${credits === 1 ? "" : "s"} in Settings → Credits to lift this free-model limit right away (the provider's own words: "${detail.trim()}").`;
+  return `Add ${credits} credit${credits === 1 ? "" : "s"} at ${who} to lift this free-model limit right away.`;
 }
 
 /** The one thing the reader can do about this status. `detail` is the
@@ -240,7 +241,7 @@ export function fixHintFor(
     return `${who} does not serve this model id. Set ${envNameFor(config.modelId)} to the id from ${who}'s console — no deploy needed.`;
   }
   if (status === 429) {
-    const upsell = creditUpsellHint(detail);
+    const upsell = creditUpsellHint(detail, who);
     if (upsell) return upsell;
     return `${who} is rate limiting this key or its free quota is spent — wait a moment and retry.`;
   }

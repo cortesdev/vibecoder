@@ -25,12 +25,10 @@ function nameFromPrompt(prompt: string): string {
 
 export default function HomeComposer({
   readiness = [],
-  balance = 0,
   initialPrompt = "",
   initialTemplate = "",
 }: {
   readiness?: ModelReadiness[];
-  balance?: number;
   initialPrompt?: string;
   initialTemplate?: string;
 }) {
@@ -44,7 +42,7 @@ export default function HomeComposer({
   const [error, setError] = useState("");
   const [attachments, setAttachments] = useState<PickedFile[]>([]);
   const { readiness: liveReadiness, secondsLeft } = useLiveReadiness(readiness);
-  const effectiveNote = effectiveStatement(resolveEffectiveModel(modelId, liveReadiness, balance));
+  const effectiveNote = effectiveStatement(resolveEffectiveModel(modelId, liveReadiness));
 
   async function submit() {
     const text = prompt.trim();
@@ -142,7 +140,6 @@ export default function HomeComposer({
             onChange={setModelId}
             readiness={liveReadiness}
             secondsLeft={secondsLeft}
-            balance={balance}
           />
           <button
             type="button"

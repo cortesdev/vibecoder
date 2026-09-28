@@ -44,6 +44,28 @@ test.describe("mock agent success journey", () => {
     expect(download.suggestedFilename()).toMatch(/\.zip$/);
   });
 
+  test("a plain hello builds, with no plan-approval payload", async ({ page }) => {
+    // Regression guard: "hello" must complete with real persisted edits and
+    // never open a plan-review / approval gate.
+    const created = await page.request.post("/api/app/projects", {
+      data: { name: "e2e hello", templateId: "landing" },
+    });
+    expect(created.ok()).toBe(true);
+    const { project } = (await created.json()) as { project: { id: string } };
+
+    const turned = await page.request.post(`/api/app/projects/${project.id}/agent`, {
+      multipart: { message: "hello", agent: "mock" },
+    });
+    expect(turned.ok()).toBe(true);
+    const data = (await turned.json()) as Record<string, unknown>;
+    expect(data.status).toBe("completed");
+    expect(Array.isArray(data.changedPaths)).toBe(true);
+    expect((data.changedPaths as string[]).length).toBeGreaterThan(0);
+    for (const key of ["plan", "pendingPlan", "approval", "requiresApproval", "suggestions"]) {
+      expect(data, `response must not carry ${key}`).not.toHaveProperty(key);
+    }
+  });
+
   test("files and editor share one store, conflicts refuse honestly", async ({ page }) => {
     const created = await page.request.post("/api/app/projects", {
       data: { name: "e2e files", templateId: "landing" },

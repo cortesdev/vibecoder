@@ -1,16 +1,19 @@
 // One honest answer to "what will actually run next?".
 //
 // The picker used to gray out every model whose readiness was not "live",
-// which turned a 0-credit, 0-key account into a dead list with no way out, and
-// it never told the user that the free chain substitutes a model behind their
+// which turned a key-less account into a dead list with no way out, and it
+// never told the user that the free chain substitutes a model behind their
 // back. This module is the single place that decides, from the readiness
-// snapshot and the wallet balance, which model the next turn will really run
-// and whether that differs from the one the user selected.
+// snapshot, which model the next turn will really run and whether that differs
+// from the one the user selected.
+//
+// There are no credit plans: nothing here consults a wallet. Every model is
+// free and runs when a key for its provider is available.
 //
 // It is pure and framework-free so the chip, the send button, and the tests
 // all agree on the same answer.
 
-import { DEFAULT_MODEL_ID, FREE_FALLBACK_ID, freeModels, getModel } from "./models";
+import { DEFAULT_MODEL_ID, getModel, freeModels } from "./models";
 import type { ModelReadiness, ReadinessStatus } from "./readiness";
 
 export type RowKind = "runnable" | "setup" | "temporary";
@@ -18,8 +21,8 @@ export type RowKind = "runnable" | "setup" | "temporary";
 /**
  * Three states, not one blanket "disabled":
  *   runnable  — the provider answered, or we have not checked yet: pick it.
- *   setup     — it cannot run until the user acts (add a key / credits / fix
- *               the model id). Never a dead end: it carries that action.
+ *   setup     — it cannot run until a key is added. Never a dead end: it
+ *               carries that action.
  *   temporary — rate limited or unreachable: recovers on its own, so the user
  *               may try anyway, with the real countdown and a statement of the
  *               model that will actually run as a fallback.
@@ -30,7 +33,7 @@ export function rowKind(status: ReadinessStatus | undefined): RowKind {
   return "temporary"; // rate_limited | unreachable
 }
 
-export type EffectiveReason = "none" | "no_credits" | "needs_setup" | "unavailable";
+export type EffectiveReason = "none" | "needs_setup" | "unavailable";
 
 export interface EffectiveModel {
   /** Best-known model the next turn will run. */
@@ -59,30 +62,18 @@ function firstRunnable(
 /**
  * Deterministic, best-known prediction of the serving model.
  *
- * The engine's rules this mirrors (src/lib/engine.ts):
- *   - a credits model the wallet cannot cover falls back to FREE_FALLBACK_ID;
- *   - a free model is tried first, then every other free model in
- *     FREE_PREFERENCE order, skipping the ones with no key.
+ * The engine's rule this mirrors (src/lib/engine.ts): a free model is tried
+ * first, then every other model in FREE_PREFERENCE order, skipping the ones
+ * with no key.
  */
 export function resolveEffectiveModel(
   selectedId: string,
   readiness: ModelReadiness[],
-  balance = 0,
 ): EffectiveModel {
   const states = Object.fromEntries(readiness.map((r) => [r.modelId, r]));
   const selected = getModel(selectedId);
 
-  if (selected && selected.tier === "credits" && balance < selected.cost) {
-    const fallback = getModel(FREE_FALLBACK_ID)!;
-    return {
-      id: fallback.id,
-      label: fallback.label,
-      reason: "no_credits",
-      substituted: true,
-    };
-  }
-
-  if (selected && selected.tier === "free") {
+  if (selected) {
     const kind = rowKind(states[selected.id]?.status);
     if (kind === "runnable") {
       return { id: selected.id, label: selected.label, reason: "none", substituted: false };
@@ -112,23 +103,21 @@ export function resolveEffectiveModel(
     };
   }
 
-  const fallback = selected ?? getModel(DEFAULT_MODEL_ID)!;
+  const fallback = getModel(DEFAULT_MODEL_ID)!;
   return { id: fallback.id, label: fallback.label, reason: "none", substituted: false };
 }
 
 /** The one-line "will actually run" statement, or null when nothing is hidden. */
 export function effectiveStatement(effective: EffectiveModel): string | null {
   switch (effective.reason) {
-    case "no_credits":
-      return `Will run: ${effective.label} (out of credits for the selected model)`;
     case "needs_setup":
       return effective.substituted
-        ? `Will run: ${effective.label} (the selected model is not set up yet)`
-        : `Will run: ${effective.label} once it is set up`;
+        ? `Will run: ${effective.label} (the selected model has no key yet)`
+        : `Will run: ${effective.label} once a key is added`;
     case "unavailable":
       return effective.fallbackLabel
         ? `Will try ${effective.label}, then fall back to ${effective.fallbackLabel}`
-        : `Will try ${effective.label} — no fallback is set up yet`;
+        : `Will try ${effective.label} — no fallback is configured yet`;
     default:
       return null;
   }

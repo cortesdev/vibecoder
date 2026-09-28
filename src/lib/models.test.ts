@@ -9,9 +9,9 @@ import {
   getModel,
 } from "./models";
 
-// The registry is the single source of truth for the picker, the billing
-// engine and the keys endpoint, so its invariants are worth locking down:
-// every one of these has broken silently at least once.
+// The registry is the single source of truth for the picker, the engine and
+// the keys endpoint, so its invariants are worth locking down: every one of
+// these has broken silently at least once.
 describe("model registry", () => {
   it("accepts a BYO key for every provider a BYO model needs one from", () => {
     for (const model of MODELS.filter((m) => m.byok)) {
@@ -50,9 +50,12 @@ describe("model registry", () => {
     expect(new Set(chain.map((m) => m.id)).size).toBe(chain.length);
   });
 
-  it("bills every credits-tier model at a positive price", () => {
-    for (const model of MODELS.filter((m) => m.tier === "credits")) {
-      expect(model.cost, model.id).toBeGreaterThan(0);
+  it("has no paywall: every model is free and costs nothing", () => {
+    // Credit plans were removed. If a paid tier ever returns, this fails and
+    // forces the paywall surface to be rebuilt deliberately.
+    for (const model of MODELS) {
+      expect(model.tier, model.id).toBe("free");
+      expect(model.cost, model.id).toBe(0);
     }
   });
 

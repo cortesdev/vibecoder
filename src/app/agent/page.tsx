@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
-import { ensureWallet, getBalance } from "@/lib/credits";
 import { checkFreeReadiness } from "@/lib/readiness";
 import HomeComposer from "@/components/app/home-composer";
 import NewProjectPicker from "@/components/projects/new-project-picker";
@@ -31,9 +30,6 @@ export default async function AppHomePage({
     redirect(`/login?next=${encodeURIComponent(`/agent?prompt=${encodeURIComponent(initialPrompt)}`)}`);
   }
   const readiness = user ? await checkFreeReadiness(user.id) : [];
-  // The wallet balance drives the picker's "0 cr / Add credits" state and the
-  // "Will run" statement, so the composer needs the real number, not a guess.
-  const balance = user ? await ensureWallet(user.id).then(() => getBalance(user.id)) : 0;
   const projects = user
     ? await db.project.findMany({
         where: { userId: user.id },
@@ -65,7 +61,6 @@ export default async function AppHomePage({
         <Suspense>
           <HomeComposer
             readiness={readiness}
-            balance={balance}
             initialPrompt={initialPrompt}
             initialTemplate={rawTemplate}
           />
