@@ -27,12 +27,11 @@ test.describe("v2 rebuild flow", () => {
     await page.getByLabel("Attach files").first().setInputFiles(zipPath);
     await expect(page.getByText(/unsupported type/i)).toBeVisible();
 
-    // First turn: no provider keys → the route refuses, text stays intact.
-    await page.getByLabel("Describe what to build").fill("A tiny blog about shipping");
-    await page.getByRole("button", { name: "Send message" }).click();
-    await expect(page.getByText(/Starting your project|Running your first prompt/i)).toBeVisible();
+    // First turn from the chat home: the route refuses, the text stays intact.
+    await page.getByLabel("Message the agent").fill("A tiny blog about shipping");
+    await page.getByRole("button", { name: "Send" }).click();
     await expect(page.getByText(/No free provider|failed/i).first()).toBeVisible({ timeout: 60_000 });
-    await expect(page.getByLabel("Describe what to build")).toHaveValue("A tiny blog about shipping");
+    await expect(page.getByLabel("Message the agent")).toHaveValue("A tiny blog about shipping");
 
     // Create the workspace project directly (template: blog) for the rest.
     const created = await page.request.post("/api/app/projects", {

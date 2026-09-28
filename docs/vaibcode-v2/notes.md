@@ -304,3 +304,28 @@ from HTTP status. ADR: `docs/vaibcode-v2/adr-orchestrator.md`.
   vision model and says so; integrations connect → 1 connected → remove.
 - Gates: tsc clean; vitest 216 pass / 7 pre-existing fail; playwright 6/6;
   build clean; lint 0 errors.
+
+### Slice 5 — chat-first home (complete)
+- Problem found: the home composer created a NEW project on every submit
+  (`home-composer.tsx:56`) then navigated away (`:86`), so a "conversation"
+  could never accumulate — every message was a separate project, and a plain
+  question still forced a scaffold. This is why it never felt like a chat.
+- `src/lib/chat/thread.ts`: `threadTarget` decides create-vs-reuse in one
+  place, plus localStorage recall/remember/forget that survives an
+  unavailable Storage. 9 unit tests, including a 4-turn sequence asserting
+  only turn 1 creates.
+- `chat-home.tsx`: the conversation is the page. First message opens a
+  thread, every later message continues it, and nothing navigates away.
+  Shows the effective model per turn, a "New chat" action, and a link into
+  the thread's files/preview/export.
+- `CHAT_TEMPLATE_ID` lets a thread start with zero files, so asking a
+  question no longer materializes a landing-page scaffold nobody asked for.
+- `src/lib/chat.ts` `loadThread` + `chat-messages.tsx`: the thread loader
+  and transcript are now shared by the home chat and the project workspace,
+  so a conversation renders identically in both.
+- Fixed e2e that had encoded the old bug: the first-turn test asserted
+  "Starting your project", which was the create-project ceremony. It now
+  asserts the text survives a real failure and the URL never changes.
+- Gates: tsc clean; vitest 241 pass / 0 fail (the 7 long-standing
+  freewallet/models failures are gone — they were order-dependent and pass
+  deterministically now); playwright 9/9; build clean; lint 0 errors.

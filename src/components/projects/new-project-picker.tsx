@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { TEMPLATES, resolveTemplate } from "@/lib/templates/catalog";
 
 // Six accessible thumbnail cards. Selection lives in ?template=<id> so it
-// survives navigation and reaches HomeComposer; unknown ids fall back to the
+// survives navigation and reaches the home chat; unknown ids fall back to the
 // landing template with a visible explanation instead of an empty project.
 export default function NewProjectPicker({ initialTemplate }: { initialTemplate?: string }) {
   const router = useRouter();

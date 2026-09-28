@@ -15,7 +15,8 @@ const RUN_PATH_FILES = [
   "src/app/api/app/projects/[id]/agent/route.ts",
   "src/lib/orchestrator.ts",
   "src/components/projects/project-builder.tsx",
-  "src/components/app/home-composer.tsx",
+  "src/components/projects/chat-messages.tsx",
+  "src/components/app/chat-home.tsx",
   "src/components/app/model-picker.tsx",
 ];
 

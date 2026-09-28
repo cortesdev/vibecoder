@@ -9,7 +9,7 @@ import { PRESETS } from "./presets";
 import { applyPresetCss } from "./presets/apply";
 import { indexCss } from "./templates/shared";
 
-import { filesFor } from "./templates/catalog";
+import { filesFor, isChatTemplate } from "./templates/catalog";
 
 // New projects start from the template catalog (src/lib/templates/): six
 // runnable Vite + React + TypeScript starters. The catalog replaced the old
@@ -33,9 +33,11 @@ export async function createProject(userId: string, name: string, templateId?: u
     data: {
       userId,
       name: trimmed,
-      files: {
-        create: Object.entries(filesFor(templateId, trimmed)).map(([path, content]) => ({ path, content })),
-      },
+      // A chat thread may legitimately start with no files; the agent adds
+      // them on the first turn that needs code.
+      files: isChatTemplate(templateId)
+        ? undefined
+        : { create: Object.entries(filesFor(templateId, trimmed)).map(([path, content]) => ({ path, content })) },
     },
   });
 }

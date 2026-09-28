@@ -184,3 +184,57 @@ test.describe("vision and integrations", () => {
     await expect(page.getByText("1 connected")).toHaveCount(0);
   });
 });
+
+test.describe("chat-first home", () => {
+  test.beforeEach(async ({ page }) => {
+    const token = process.env.FAKE_LOGIN_TOKEN ?? "";
+    test.skip(!token, "FAKE_LOGIN_TOKEN not set");
+    await page.goto(`/api/dev/fake-login?token=${encodeURIComponent(token)}`);
+    await expect(page).toHaveURL(/\/agent(\?|$)/, { timeout: 30_000 });
+  });
+
+  // The regression: the old home page created a NEW project per message and
+  // then navigated away, so a conversation could never accumulate. Two sends
+  // must resolve to the SAME thread, in place, with the text never lost.
+  test("two messages share one thread and stay on the page", async ({ page }) => {
+    await page.getByLabel("Message the agent").fill("make the header sticky");
+    await page.getByRole("button", { name: "Send" }).click();
+
+    // No provider keys under the e2e config, so the turn reports the real
+    // failure instead of pretending to succeed.
+    await expect(page.getByText(/No free provider|failed/i).first()).toBeVisible({ timeout: 60_000 });
+    // Never navigated off the chat.
+    await expect(page).toHaveURL(/\/agent(\?|$)/);
+    // The typed request survived the failure.
+    await expect(page.getByLabel("Message the agent")).toHaveValue("make the header sticky");
+
+    const threadHref = await page.getByText(/Open this thread/i).getAttribute("href");
+    expect(threadHref).toMatch(/^\/agent\/projects\/.+/);
+
+    // A second message must reuse that thread, not open a new project.
+    await page.getByLabel("Message the agent").fill("now center it");
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByText(/No free provider|failed/i).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page).toHaveURL(/\/agent(\?|$)/);
+    expect(await page.getByText(/Open this thread/i).getAttribute("href")).toBe(threadHref);
+  });
+
+  test("a thread can start with no scaffolded files", async ({ page }) => {
+    const created = await page.request.post("/api/app/projects", {
+      data: { name: "e2e empty", templateId: "empty" },
+    });
+    expect(created.ok()).toBe(true);
+    const { project } = (await created.json()) as { project: { id: string; files?: unknown[] } };
+    expect(project.files ?? []).toEqual([]);
+
+    // The thread still works: the agent turn runs against a project with no
+    // files rather than the endpoint refusing a scaffold-less thread.
+    const turned = await page.request.post(`/api/app/projects/${project.id}/agent`, {
+      multipart: { message: "what should a landing page have?", agent: "mock" },
+    });
+    expect(turned.ok()).toBe(true);
+    const data = (await turned.json()) as { ok?: boolean; changedPaths?: string[] };
+    expect(data.ok).toBe(true);
+    expect(Array.isArray(data.changedPaths)).toBe(true);
+  });
+});

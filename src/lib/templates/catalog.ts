@@ -70,6 +70,15 @@ export const TEMPLATE_IDS = TEMPLATES.map((t) => t.id);
 
 export const DEFAULT_TEMPLATE_ID: TemplateId = "landing";
 
+/** A conversation that starts with no files. Unlike a real template, a chat
+ *  that has not asked for code yet should not be handed a scaffold it never
+ *  asked for — the agent creates files on the first turn that needs them. */
+export const CHAT_TEMPLATE_ID = "empty";
+
+export function isChatTemplate(id: unknown): boolean {
+  return id === CHAT_TEMPLATE_ID;
+}
+
 /** Unknown or missing ids fall back to landing — never an empty project. */
 export function resolveTemplate(id: unknown): TemplateDef {
   return TEMPLATES.find((t) => t.id === id) ?? TEMPLATES[0];

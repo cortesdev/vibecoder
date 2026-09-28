@@ -6,6 +6,7 @@ import PreviewPane from "./preview-pane";
 import PresetPanel from "./preset-panel";
 import FilesPanel, { type FilesMutation } from "./files-panel";
 import EditorPanel from "./editor-panel";
+import ChatMessages from "./chat-messages";
 import IntegrationsPanel from "./integrations-panel";
 import type { IntegrationService } from "@/lib/integrations";
 import AttachmentPicker, { type PickedFile } from "./attachment-picker";
@@ -266,56 +267,7 @@ export default function ProjectBuilder({
             {initialNotice}
           </div>
         )}
-        <div className="flex-1 min-h-0 space-y-3 overflow-y-auto p-4" aria-live="polite">
-          {messages.length === 0 && !busy && (
-            <div className="px-1 pt-10 text-center">
-              <p className="text-[14px] font-semibold">Talk to your agent.</p>
-              <p className="muted mt-1 text-[13px]">
-                Attach a screenshot, clip, or document — the request carries it to the model.
-              </p>
-            </div>
-          )}
-          {messages.map((m) => {
-            const latency = fmtLatency(m.latencyMs);
-            const meta = [m.modelLabel, m.providerLabel, latency, m.tokens !== undefined ? `${m.tokens} tok` : null]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-              <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-                <div
-                  className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed"
-                  style={
-                    m.role === "user"
-                      ? { background: "var(--bg)", color: "var(--ink)" }
-                      : { background: "var(--bg-inset)", color: "var(--ink)", boxShadow: "inset 0 0 0 1px var(--hairline)" }
-                  }
-                >
-                  {m.content}
-                  {meta && (
-                    <p className="mt-1 text-[11px]" style={{ color: "var(--ink-3)" }}>
-                      routed via {meta}
-                    </p>
-                  )}
-                  {m.notice && (
-                    <p className="mt-1 text-[11px]" style={{ color: "var(--warn)" }}>
-                      {m.notice}
-                    </p>
-                  )}
-                  {m.changedCount !== undefined && m.changedCount > 0 && (
-                    <RunDownloadLink projectId={projectId} changedCount={m.changedCount} />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          {busy && (
-            <div className="flex justify-start">
-              <p className="text-[13px]" style={{ color: "var(--ink-3)" }} aria-live="polite">
-                Working…
-              </p>
-            </div>
-          )}
-        </div>
+        <ChatMessages projectId={projectId} messages={messages} busy={busy} />
         <form className="shrink-0 p-3 pt-1" onSubmit={(e) => void send(e)}>
           <div
             className="rounded-2xl p-3"
