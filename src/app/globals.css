@@ -271,6 +271,10 @@ details[open]::details-content { block-size: auto; }
 .ember-logo {
   position: absolute; left: 50%; top: 40%;
   width: 192px; height: 192px; margin: -96px 0 0 -96px;
+  /* Pre-JS / no-WebGL fallback: already small and subtle, never a billboard. */
+  transform: scale(0.55);
+  opacity: 0.5;
+  filter: blur(2px);
   will-change: transform, opacity, filter;
 }
 .ember-logo-glow {
@@ -278,5 +282,5 @@ details[open]::details-content { block-size: auto; }
   background: radial-gradient(circle, color-mix(in srgb, var(--accent) 32%, transparent), transparent 65%);
   filter: blur(10px);
 }
-.ember-logo-img { position: relative; width: 100%; height: 100%; border-radius: 22%; }
+.ember-logo-img { position: relative; width: 100%; height: 100%; }
 :root[data-theme="light"] .ember-layer { display: none; }

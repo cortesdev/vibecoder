@@ -65,6 +65,18 @@ export interface ChatMessageDto {
   error: string;
   createdAt: string;
   changes: ChangeDto[];
+  /** Playground-style routing metadata: who actually served this turn. */
+  providerLabel?: string;
+  latencyMs?: number;
+  tokens?: number;
+  notice?: string;
+  /** The user prompt that produced this message — powers Retry on failures. */
+  prompt?: string;
+}
+
+function fmtLatency(ms: number | undefined): string | null {
+  if (ms === undefined || !Number.isFinite(ms) || ms < 0) return null;
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
 interface PendingPlan {
@@ -74,6 +86,8 @@ interface PendingPlan {
   skillIds: string[];
   reply?: string;
   modelLabel?: string;
+  providerLabel?: string;
+  latencyMs?: number;
 }
 
 const COMPOSER_MAX_HEIGHT = 180;
@@ -276,7 +290,11 @@ export default function ProjectBuilder({
   }
 
   const applyResult = useCallback(
-    (prompt: { changes: ChangeDto[] }, reply: string | undefined, modelLabel?: string) => {
+    (
+      prompt: { changes: ChangeDto[] },
+      reply: string | undefined,
+      meta?: { modelLabel?: string; providerLabel?: string; latencyMs?: number; tokens?: number; notice?: string },
+    ) => {
       // Edits were already applied server-side; reflect them in the local files.
       const newChanges = prompt.changes.map((c) => ({ ...c, status: "applied" as const }));
       if (newChanges.length > 0) {
@@ -298,7 +316,11 @@ export default function ProjectBuilder({
         role: "assistant",
         content: reply || (newChanges.length ? `Done — updated ${newChanges.map((c) => c.path).join(", ")}.` : "All set."),
         mode,
-        modelLabel: modelLabel ?? "",
+        modelLabel: meta?.modelLabel ?? "",
+        providerLabel: meta?.providerLabel,
+        latencyMs: meta?.latencyMs,
+        tokens: meta?.tokens,
+        notice: meta?.notice,
         error: "",
         createdAt: new Date().toISOString(),
         changes: newChanges,
@@ -373,6 +395,9 @@ export default function ProjectBuilder({
         suggestions?: string[];
         skillIds?: string[];
         modelLabel?: string;
+        providerLabel?: string;
+        latencyMs?: number;
+        usage?: { totalTokens?: number };
         error?: string;
         notice?: string;
       } | null = null;
@@ -401,6 +426,9 @@ export default function ProjectBuilder({
                 suggestions?: string[];
                 skillIds?: string[];
                 modelLabel?: string;
+                providerLabel?: string;
+                latencyMs?: number;
+                usage?: { totalTokens?: number };
                 prompt?: { changes: ChangeDto[] };
               };
               if (msg.type === "status" || msg.type === "heartbeat") {
@@ -437,6 +465,8 @@ export default function ProjectBuilder({
           skillIds: Array.isArray(done.skillIds) ? done.skillIds.slice(0, 3) : [],
           reply: done.reply ?? lastReply,
           modelLabel: done.modelLabel,
+          providerLabel: done.providerLabel,
+          latencyMs: done.latencyMs,
         };
         setPendingPlan(nextPlan);
         setPlanText(nextPlan.plan);
@@ -450,13 +480,22 @@ export default function ProjectBuilder({
             content: nextPlan.reply || "Plan ready for review.",
             mode,
             modelLabel: nextPlan.modelLabel ?? "",
+            providerLabel: nextPlan.providerLabel,
+            latencyMs: nextPlan.latencyMs,
+            notice: done.notice,
             error: "",
             createdAt: new Date().toISOString(),
             changes: [],
           },
         ]);
       } else if (done?.ok && done.prompt) {
-        applyResult(done.prompt, done.reply ?? lastReply, done.modelLabel);
+        applyResult(done.prompt, done.reply ?? lastReply, {
+          modelLabel: done.modelLabel,
+          providerLabel: done.providerLabel,
+          latencyMs: done.latencyMs,
+          tokens: done.usage?.totalTokens,
+          notice: done.notice,
+        });
         setPendingPlan(null);
         setPlanText("");
         setPlanAnswer("");
@@ -472,6 +511,8 @@ export default function ProjectBuilder({
             content: `⚠ ${errText}${done?.notice ? ` — ${done.notice}` : ""}`,
             mode,
             modelLabel: "",
+            notice: done?.notice,
+            prompt: text,
             error: errText,
             createdAt: new Date().toISOString(),
             changes: [],
@@ -489,6 +530,7 @@ export default function ProjectBuilder({
           content: `⚠ ${msg}`,
           mode,
           modelLabel: "",
+          prompt: text || undefined,
           error: msg,
           createdAt: new Date().toISOString(),
           changes: [],

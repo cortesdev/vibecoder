@@ -327,7 +327,7 @@ export default function EmberBackground() {
       <div ref={logoRef} className="ember-logo">
         <div className="ember-logo-glow" />
         <Image
-          src="/vibe-logo.png"
+          src="/vibe-logo.svg"
           alt=""
           width={192}
           height={192}

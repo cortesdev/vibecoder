@@ -206,6 +206,7 @@ model Project {
   id        String        @id @default(cuid())
   userId    String
   name      String
+  activePresetId String?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
@@ -213,8 +214,25 @@ model Project {
   files    ProjectFile[]
   prompts  Prompt[]
   changes  Change[]
+  shares   PreviewShare[]
 
   @@index([userId])
+}
+
+// Read-only preview snapshot share. Only the sha256 of the bearer token is
+// stored; the token itself is shown once at creation and never persisted.
+model PreviewShare {
+  id        String    @id @default(cuid())
+  projectId String
+  tokenHash String    @unique
+  snapshot  String    // built HTML snapshot served verbatim
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
 
 model ProjectFile {
@@ -242,6 +260,9 @@ model Prompt {
   modelId    String   @default("")
   modelLabel String   @default("")
   error      String   @default("")
+  // Nullable JSON text: attachment descriptions, export links, routing meta.
+  // Never attachment bytes.
+  metadata   String?
   createdAt  DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)

@@ -57,19 +57,21 @@ export default function SiteNav() {
         }`}
       >
         <Wordmark href="/" label="Go to homepage" />
-        <div className="flex items-center gap-6 text-sm" style={{ color: "var(--ink-2)" }}>
-          <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="hover:opacity-70">
-            GitHub
-          </a>
-          <a
-            href="#faq"
-            className={active === "faq" ? "nav-link-active hover:opacity-70" : "hover:opacity-70"}
-          >
-            Docs
-          </a>
-              <a href="/agent" className="hover:opacity-70">
-            Agent
-          </a>
+        <div className="flex items-center gap-3 sm:gap-6">
+          <div className="hidden items-center gap-6 text-sm sm:flex" style={{ color: "var(--ink-2)" }}>
+            <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="hover:opacity-70">
+              GitHub
+            </a>
+            <a
+              href="#faq"
+              className={active === "faq" ? "nav-link-active hover:opacity-70" : "hover:opacity-70"}
+            >
+              Docs
+            </a>
+            <a href="/agent" className="hover:opacity-70">
+              Agent
+            </a>
+          </div>
           <a href="#download" className="btn btn-primary btn-sm">
             Download
           </a>

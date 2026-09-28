@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Paperclip, Send, X, File } from "lucide-react";
 import ModelPicker from "./model-picker";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
+import { resolveTemplate } from "@/lib/templates/catalog";
 import type { ModelReadiness } from "@/lib/readiness";
 
 // Home chat composer: type a message, hit Enter, and it creates the project
@@ -30,11 +31,14 @@ interface Attachment {
 export default function HomeComposer({
   readiness = [],
   initialPrompt = "",
+  initialTemplate = "",
 }: {
   readiness?: ModelReadiness[];
   initialPrompt?: string;
+  initialTemplate?: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const [modelId, setModelId] = useState(DEFAULT_MODEL_ID);
   const [mode, setMode] = useState<Mode>("Build");
@@ -50,10 +54,11 @@ export default function HomeComposer({
     setError("");
     setStatus("Starting your project…");
     try {
+      const templateId = resolveTemplate(searchParams.get("template") ?? initialTemplate).id;
       const created = await fetch("/api/app/projects", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: nameFromPrompt(text) }),
+        body: JSON.stringify({ name: nameFromPrompt(text), templateId }),
       });
       const data = (await created.json()) as { ok: boolean; project?: { id: string }; error?: string };
       if (!created.ok || !data.ok || !data.project) throw new Error(data.error ?? "Could not create the project.");

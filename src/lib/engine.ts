@@ -40,6 +40,7 @@ const PLATFORM_KEY_ENV: Record<string, string[]> = {
   zai: ["VIBECODER_ZAI_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"],
   cerebras: ["VIBECODER_CEREBRAS_API_KEY", "CEREBRAS_API_KEY"],
   huggingface: ["VIBECODER_HF_TOKEN", "HF_TOKEN", "HUGGINGFACE_API_KEY"],
+  custom: ["VIBECODER_CUSTOM_API_KEY", "CUSTOM_API_KEY", "FREELLMAPI_API_KEY"],
   google: ["VIBECODER_GEMINI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"],
   groq: ["VIBECODER_GROQ_API_KEY", "GROQ_KEY", "GROQ_API_KEY"],
   openrouter: ["VIBECODER_OPENROUTER_API_KEY", "OPENROUTER_KEY", "OPENROUTER_API_KEY"],
@@ -87,6 +88,11 @@ export interface RunOutcome {
   skillIds?: string[];
   modelId?: string;
   modelLabel?: string;
+  /** Human provider name that actually served the run ("Groq") — the
+   *  X-Routed-Via equivalent, so the chat can say who answered. */
+  providerLabel?: string;
+  /** Wall-clock ms for the serving provider attempt. */
+  latencyMs?: number;
   usedFallback?: boolean;
   creditsSpent?: number;
   // Free-token wallet accounting (free-first runs).
@@ -215,6 +221,7 @@ async function runFreeAnswer(
       continue;
     }
     attempted = true;
+    const started = Date.now();
     try {
       const { edits, reply, usage, plan, suggestions, skillIds } = await run(agent);
       const swapped =
@@ -234,6 +241,8 @@ async function runFreeAnswer(
         skillIds,
         modelId: candidate.id,
         modelLabel: candidate.label,
+        providerLabel: PROVIDER_META[candidate.provider].label,
+        latencyMs: Date.now() - started,
         ...(usedFallback ? { usedFallback: true } : {}),
         notice: swapped || undefined,
         model: candidate,
@@ -316,6 +325,7 @@ export async function runModelPrompt(input: {
   }
 
   try {
+    const started = Date.now();
     const { edits, reply, usage, plan, suggestions, skillIds } = await input.run(agent);
     return {
       ok: true,
@@ -327,6 +337,8 @@ export async function runModelPrompt(input: {
       skillIds,
       modelId: model.id,
       modelLabel: model.label,
+      providerLabel: PROVIDER_META[model.provider].label,
+      latencyMs: Date.now() - started,
       creditsSpent: model.cost,
     };
   } catch (err) {

@@ -38,14 +38,14 @@ export function pageProgress(
 
 export function useInView<T extends HTMLElement>(threshold = 0.18) {
   const ref = useRef<T | null>(null);
-  const [seen, setSeen] = useState(false);
+  // No IntersectionObserver (old browser, jsdom): reveal immediately instead
+  // of syncing state inside the effect below.
+  const [seen, setSeen] = useState(
+    () => typeof IntersectionObserver === "undefined",
+  );
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setSeen(true);
-      return;
-    }
+    if (!el || typeof IntersectionObserver === "undefined") return;
     const io = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -123,15 +123,10 @@ export function AnimatedNumber({
   prefix?: string;
   suffix?: string;
 }) {
-  const [v, setV] = useState(0);
+  const [v, setV] = useState(() => (prefersReduced() ? value : 0));
   const from = useRef(0);
   useEffect(() => {
-    if (!run) return;
-    if (prefersReduced()) {
-      from.current = value;
-      setV(value);
-      return;
-    }
+    if (!run || prefersReduced()) return;
     const t0 = performance.now();
     const a = from.current;
     const b = value;

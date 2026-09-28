@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { checkFreeReadiness } from "@/lib/readiness";
 import HomeComposer from "@/components/app/home-composer";
+import NewProjectPicker from "@/components/projects/new-project-picker";
 import { FolderOpen } from "lucide-react";
 
 function greeting(): string {
@@ -20,6 +22,7 @@ export default async function AppHomePage({
   const sp = (await searchParams) ?? {};
   const rawInitial = typeof sp.prompt === "string" ? sp.prompt : Array.isArray(sp.prompt) ? sp.prompt[0] : "";
   const initialPrompt = rawInitial.slice(0, 4000);
+  const rawTemplate = typeof sp.template === "string" ? sp.template : "";
 
   const user = await currentUser();
   if (!user && initialPrompt.trim()) {
@@ -55,7 +58,15 @@ export default async function AppHomePage({
       </p>
 
       <div className="hero-rise mt-8 w-full" style={{ "--i": 3 } as React.CSSProperties}>
-        <HomeComposer readiness={readiness} initialPrompt={initialPrompt} />
+        <Suspense>
+          <HomeComposer readiness={readiness} initialPrompt={initialPrompt} initialTemplate={rawTemplate} />
+        </Suspense>
+      </div>
+
+      <div className="hero-rise mt-10 w-full" style={{ "--i": 4 } as React.CSSProperties}>
+        <Suspense>
+          <NewProjectPicker initialTemplate={rawTemplate} />
+        </Suspense>
       </div>
 
       {projects.length > 0 && (

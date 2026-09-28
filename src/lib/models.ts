@@ -4,7 +4,7 @@
 // free to run — the user pays the provider directly.
 
 export type Tier = "free" | "credits";
-export type ProviderId = "vibecoder" | "opencode" | "google" | "groq" | "openrouter" | "nvidia" | "anthropic" | "openai" | "cerebras" | "huggingface" | "zai";
+export type ProviderId = "vibecoder" | "opencode" | "google" | "groq" | "openrouter" | "nvidia" | "anthropic" | "openai" | "cerebras" | "huggingface" | "zai" | "custom";
 
 
 
@@ -107,6 +107,21 @@ export const MODELS: ModelDef[] = [
     note: "Hugging Face Inference Providers free credit (HF_TOKEN), subject to monthly credit limits.",
   },
   {
+    id: "custom-auto",
+    label: "Custom Auto",
+    provider: "custom",
+    tier: "free",
+    cost: 0,
+    // FreeLLMAPI-style gateway entry: no default base URL on purpose, so it
+    // is inert until the operator points VIBECODER_BASE_URL_CUSTOM at an
+    // OpenAI-compatible endpoint (a local FreeLLMAPI router, Ollama, vLLM).
+    // VIBECODER_MODEL_CUSTOM_AUTO repoints the model string ("auto" default).
+    model: "auto",
+    byok: true,
+    contextLimit: 128000,
+    note: "Your own gateway — set VIBECODER_BASE_URL_CUSTOM plus its key.",
+  },
+  {
     id: "nemotron",
     label: "Nemotron (NVIDIA)",
     provider: "nvidia",
@@ -200,7 +215,7 @@ export const DEFAULT_MODEL_ID = "openrouter-free";
  * a wait only after the healthy providers have refused. OpenRouter sits
  * first and is capped at 50 free requests/day per key.
  */
-const FREE_PREFERENCE = ["openrouter-free", "groq-gpt-oss", "cerebras-llama", "glm-flash", "hf-gpt-oss", "nemotron", "gemini-flash"];
+const FREE_PREFERENCE = ["openrouter-free", "custom-auto", "groq-gpt-oss", "cerebras-llama", "glm-flash", "hf-gpt-oss", "nemotron", "gemini-flash"];
 
 export function freeModels(): ModelDef[] {
   const rank = (m: ModelDef) => {
@@ -220,6 +235,7 @@ export const PROVIDER_META: Record<ProviderId, { label: string; blurb: string }>
   cerebras: { label: "Cerebras", blurb: "Free plan with usage limits" },
   huggingface: { label: "Hugging Face", blurb: "Inference Providers free credit" },
   zai: { label: "Z.ai", blurb: "Free GLM Flash" },
+  custom: { label: "Custom Gateway", blurb: "Your OpenAI-compatible endpoint" },
   google: { label: "Google", blurb: "Free Gemini tier" },
   anthropic: { label: "Anthropic", blurb: "Hosted — billed in credits" },
   openai: { label: "OpenAI", blurb: "Hosted — billed in credits" },

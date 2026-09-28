@@ -229,18 +229,22 @@ export default function HomeClient() {
         {/* Download — everything on one page */}
         <section id="download" className="hairline-t px-6 py-24" aria-labelledby="dl-h">
           <div className="mx-auto max-w-[900px]">
-            <div className="text-center">
-              <h2 id="dl-h" className="h2">
-                Download Vibecoder.
-              </h2>
-              <p className="muted mx-auto mt-3 max-w-[520px]">
-                Native desktop app for macOS, Windows, and Linux. Free, open
-                source, and it stays on your machine.
-              </p>
-            </div>
-            <div className="mt-10">
-              <DownloadButtons variant="list" />
-            </div>
+            <Reveal>
+              <div className="text-center">
+                <h2 id="dl-h" className="h2">
+                  Download Vibecoder.
+                </h2>
+                <p className="muted mx-auto mt-3 max-w-[520px]">
+                  Native desktop app for macOS, Windows, and Linux. Free, open
+                  source, and it stays on your machine.
+                </p>
+              </div>
+            </Reveal>
+            <Reveal delay={110}>
+              <div className="mt-10">
+                <DownloadButtons variant="list" />
+              </div>
+            </Reveal>
             <p className="muted-3 mt-4 text-center text-[13px]">
               Prefer the terminal? The CLI is a free download too:{" "}
               <code
@@ -263,40 +267,60 @@ export default function HomeClient() {
         {/* Upgrade (Stripe) */}
         <section className="hairline-t px-6 py-24" aria-labelledby="upgrade-section-h">
           <div className="mx-auto max-w-[560px]">
-            <div className="text-center">
-            <p className="eyebrow">Optional</p>
-            <h2 id="upgrade-section-h" className="h2 mt-2">
-              Support the project.
-            </h2>
-            <p className="muted mx-auto mt-3 max-w-[440px]">
-              Vibecoder is a free AI coding agent — free forever, no
-              credits, no subscription. If you want to fund development and
-              get a few conveniences, Pro is a one-time payment — not a
-              subscription.
-            </p>
-            </div>
-            <div className="mt-10">
-              <UpgradeCard demoAvailable={testEnabled} />
-            </div>
+            <Reveal>
+              <div className="text-center">
+              <p className="eyebrow">Optional</p>
+              <h2 id="upgrade-section-h" className="h2 mt-2">
+                Support the project.
+              </h2>
+              <p className="muted mx-auto mt-3 max-w-[440px]">
+                Vibecoder is a free AI coding agent — free forever, no
+                credits, no subscription. If you want to fund development and
+                get a few conveniences, Pro is a one-time payment — not a
+                subscription.
+              </p>
+              </div>
+            </Reveal>
+            <Reveal delay={110}>
+              <div className="mt-10">
+                <UpgradeCard demoAvailable={testEnabled} />
+              </div>
+            </Reveal>
           </div>
         </section>
 
         {/* FAQ */}
         <section id="faq" className="hairline-t px-6 py-24" aria-labelledby="faq-h">
           <div className="mx-auto max-w-[720px]">
-            <h2 id="faq-h" className="h2 text-center">
-              Questions, answered plainly.
-            </h2>
-            <div className="mt-10">
-              {faqs.map((f) => (
-                <details key={f.q} className="border-b" style={{ borderColor: "var(--hairline)" }}>
-                  <summary className="cursor-pointer list-none py-5 text-[17px] font-medium">
-                    {f.q}
-                  </summary>
-                  <p className="muted max-w-[62ch] pb-5">{f.a}</p>
-                </details>
-              ))}
-            </div>
+            <Reveal>
+              <h2 id="faq-h" className="h2 text-center">
+                Questions, answered plainly.
+              </h2>
+            </Reveal>
+            <Reveal delay={110}>
+              <div className="lm-acc mt-10">
+                {faqs.map((f, i) => (
+                  <div key={f.q} className={`lm-acc-item${openFaq === i ? " open" : ""}`}>
+                    <button
+                      type="button"
+                      className="lm-acc-q"
+                      aria-expanded={openFaq === i}
+                      onClick={() => setOpenFaq(openFaq === i ? -1 : i)}
+                    >
+                      {f.q}
+                      <svg width="18" height="18" viewBox="0 0 18 18" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+                        <path d="M9 3v12M3 9h12" />
+                      </svg>
+                    </button>
+                    <div className="lm-acc-a">
+                      <div>
+                        <p className="muted max-w-[62ch]">{f.a}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Reveal>
           </div>
         </section>
       </main>
