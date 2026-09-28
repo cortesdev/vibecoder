@@ -1,4 +1,5 @@
 import type { Agent, AgentPlanOptions, AgentResult, AgentRunContext, FileEdit, Files } from "./types";
+import type { AgentAttachment } from "./types";
 import { formatSkillInstructions } from "./skills";
 import { isValidProjectPath, sanitizePath } from "./paths";
 
@@ -336,6 +337,34 @@ function executionSystemPrompt(context?: AgentRunContext): string {
   return parts.join("\n\n");
 }
 
+/** Translate normalized attachments to OpenAI content blocks. Images and
+ *  extracted video frames become image_url blocks (detail "auto" for the
+ *  principal image, "low" for sampled frames, timestamps alongside frames);
+ *  documents become labeled text. Text-only behavior is preserved exactly. */
+export function userContentBlocks(
+  text: string,
+  attachments: AgentAttachment[] = [],
+): string | { type: string; text?: string; image_url?: { url: string; detail: string } }[] {
+  if (attachments.length === 0) return text;
+  const blocks: { type: string; text?: string; image_url?: { url: string; detail: string } }[] = [
+    { type: "text", text },
+  ];
+  for (const a of attachments) {
+    if (a.kind === "image") {
+      blocks.push({ type: "image_url", image_url: { url: a.imageUrl, detail: a.detail } });
+    } else if (a.kind === "videoFrames") {
+      for (const f of a.frames) {
+        blocks.push({ type: "text", text: `[frame @${f.timestampMs}ms of ${a.name}]` });
+        blocks.push({ type: "image_url", image_url: { url: f.imageUrl, detail: f.detail } });
+      }
+    } else {
+      const flag = a.truncated ? " (truncated to extraction limit)" : "";
+      blocks.push({ type: "text", text: `[attached document ${a.name} (${a.mimeType})${flag}]\n${a.extractedText}` });
+    }
+  }
+  return blocks;
+}
+
 /** Parse the agent's JSON answer into edits plus its conversational reply. */
 function parseAgentReply(raw: string): { edits: FileEdit[]; reply: string } {
   const text = raw
@@ -426,7 +455,8 @@ export class LlmAgent implements Agent {
   async run(prompt: string, files: Files, context: AgentRunContext = {}): Promise<AgentResult> {
     const fileList = buildFileList(files, prompt);
     const answerText = context.answer?.trim();
-    const userMessage = `Project files:${fileList || "\n(empty project)\n"}\n\nUser prompt: ${prompt}${answerText ? `\n\nAdditional user answer: ${answerText}` : ""}`;
+    const userText = `Project files:${fileList || "\n(empty project)\n"}\n\nUser prompt: ${prompt}${answerText ? `\n\nAdditional user answer: ${answerText}` : ""}`;
+    const userMessage = userContentBlocks(userText, context.attachments);
 
     const cap = outputTokenBudget(this.config);
     const data = (await requestCompletion(this.config, JSON.stringify({

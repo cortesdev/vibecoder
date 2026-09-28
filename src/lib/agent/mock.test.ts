@@ -39,3 +39,24 @@ describe("MockAgent", () => {
     expect(edits[0].after).not.toBe("x");
   });
 });
+describe("MockAgent attachments", () => {
+  it("records the normalized attachment payload deterministically", async () => {
+    const agent = new MockAgent();
+    const { edits } = await agent.run("redesign", { "src/App.tsx": "x" }, {
+      attachments: [
+        { kind: "image", name: "ui.png", mimeType: "image/png", imageUrl: "data:...", detail: "auto" },
+        {
+          kind: "videoFrames",
+          name: "clip.mp4",
+          mimeType: "video/mp4",
+          frames: [{ timestampMs: 0, imageUrl: "data:...", detail: "low" }],
+        },
+        { kind: "document", name: "spec.md", mimeType: "text/plain", extractedText: "blue", truncated: true },
+      ],
+    });
+    expect(edits).toHaveLength(1);
+    expect(edits[0].after).toContain("[image ui.png image/png auto]");
+    expect(edits[0].after).toContain("[video clip.mp4 1 frames @0]");
+    expect(edits[0].after).toContain("[document spec.md text/plain truncated]");
+  });
+});

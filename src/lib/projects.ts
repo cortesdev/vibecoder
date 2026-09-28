@@ -4,7 +4,7 @@ import { isValidProjectPath, sanitizePath } from "./agent/paths";
 import { getSkillCatalog } from "./agent/skill-catalog";
 import { selectSkillIds, toSkillSummary, type SkillDefinition } from "./agent/skills";
 import { getApprovedLearningContext, recordLearning } from "./learning";
-import type { AgentPlanOptions, AgentRunContext } from "./agent/types";
+import type { AgentAttachment, AgentPlanOptions, AgentRunContext } from "./agent/types";
 import { presetCss, PRESETS } from "./presets";
 
 import { filesFor } from "./templates/catalog";
@@ -204,6 +204,8 @@ export async function runPrompt(
   mode = "build",
   onEvent?: (message: string) => void,
   executionContext: PromptExecutionContext = {},
+  agentAttachments: AgentAttachment[] = [],
+  metadata?: string,
 ) {
   const project = await findOwnedProject(userId, projectId);
   if (!project) return { ok: false as const, error: "not_found" };
@@ -224,6 +226,7 @@ export async function runPrompt(
     approvedPlan: executionContext.approvedPlan,
     answer: executionContext.answer,
     skills: skillContext?.skills,
+    attachments: agentAttachments,
   };
 
   const outcome = await runModelPrompt({
@@ -289,6 +292,7 @@ export async function runPrompt(
         mode,
         modelId: outcome.modelId ?? "",
         modelLabel: outcome.modelLabel ?? "",
+        ...(metadata === undefined ? {} : { metadata }),
       },
     });
     await recordExecutionLearning({
@@ -309,6 +313,8 @@ export async function runPrompt(
       usage: outcome.usage,
       notice: outcome.notice,
       reply: outcome.reply.trim(),
+      changedPaths: [] as string[],
+      success: true as const,
     };
   }
 
@@ -378,6 +384,7 @@ export async function runPrompt(
       mode,
       modelId: outcome.modelId ?? "",
       modelLabel: outcome.modelLabel ?? "",
+      ...(metadata === undefined ? {} : { metadata }),
     },
   });
   await recordExecutionLearning({
@@ -407,6 +414,8 @@ export async function runPrompt(
     freeTokensLeft: outcome.freeTokensLeft,
     freeExhausted: outcome.freeExhausted,
     notice: outcome.notice,
+    changedPaths: applied,
+    success: true as const,
   };
 }
 

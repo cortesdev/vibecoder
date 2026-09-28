@@ -34,6 +34,40 @@ export interface AgentRunContext {
   approvedPlan?: string;
   answer?: string;
   skills?: SkillDefinition[];
+  /** Normalized multimodal inputs. Transport-agnostic: LlmAgent translates
+   *  these to provider blocks, MockAgent handles them deterministically. */
+  attachments?: AgentAttachment[];
+}
+
+/** Normalized attachment payload. No raw upload bytes beyond data URLs the
+ *  model can consume: images/frames as data URLs, documents as text. */
+export type AgentAttachment =
+  | { kind: "image"; name: string; mimeType: string; imageUrl: string; detail: "auto" | "low"; width?: number; height?: number }
+  | { kind: "videoFrames"; name: string; mimeType: string; frames: { timestampMs: number; imageUrl: string; detail: "low" }[] }
+  | { kind: "document"; name: string; mimeType: string; extractedText: string; truncated: boolean };
+
+/** Normalized request for an agent turn (what POST .../agent accepts). */
+export interface AgentRequest {
+  projectId: string;
+  userText: string;
+  attachments: AgentAttachment[];
+  files: Files;
+  modelId?: string;
+}
+
+/** Normalized result: existing agent fields plus explicit outcome. */
+export interface AgentRunResult extends AgentResult {
+  changedPaths: string[];
+  success: boolean;
+}
+
+/** Derive the normalized result shape from any agent result. */
+export function toRunResult(result: AgentResult): AgentRunResult {
+  return {
+    ...result,
+    changedPaths: result.edits.map((e) => e.path),
+    success: true,
+  };
 }
 
 export interface AgentPlanOptions {

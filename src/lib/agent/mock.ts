@@ -29,7 +29,16 @@ export class MockAgent implements Agent {
 
     const before = files[path] ?? "";
     const contextNote = [context.approvedPlan, context.answer].filter((value) => value?.trim()).join("\n");
-    const note = contextNote ? `${prompt}\n${contextNote}` : prompt;
+    const attachmentNote = (context.attachments ?? [])
+      .map((a) =>
+        a.kind === "image"
+          ? `[image ${a.name} ${a.mimeType} ${a.detail}]`
+          : a.kind === "videoFrames"
+            ? `[video ${a.name} ${a.frames.length} frames @${a.frames.map((f) => f.timestampMs).join(",")}]`
+            : `[document ${a.name} ${a.mimeType}${a.truncated ? " truncated" : ""}]`,
+      )
+      .join("\n");
+    const note = [prompt, contextNote, attachmentNote].filter((value) => value?.trim()).join("\n");
     const marker = /\.(tsx|jsx)$/.test(path)
       ? `{/* vibecoder mock: ${note} */}`
       : `// vibecoder mock: ${note}`;

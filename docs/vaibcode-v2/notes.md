@@ -85,6 +85,32 @@ assertion) + jsdom/undici worker errors in component tests.
 - Gates after strip: `tsc` clean, `pnpm build` clean, `pnpm lint` 0 errors
   (6 warnings), tests 107 passed / 7 failed (same pre-existing 7).
 
+## M3 — browser-only preview (complete)
+- `preview/build-preview.ts`: pure bundling (VFS plugin, React 19.2.8 CDN map,
+  outfile fix for CSS, escape/assemble/snapshot + restrictive CSP,
+  per-nonce one-way error bridge injection).
+- `preview/bridge.ts` + tests: source/nonce/type/size validation; snippet has
+  no eval/commands.
+- `preview-toolbar.tsx` (controlled, labelled) + `preview-pane.tsx` (esbuild
+  once/session, content-hash JS cache with nonce applied post-cache, 350ms
+  debounce / immediate refresh, runtime-error surfacing, `sandbox="allow-scripts"`
+  only, no localhost fetch anywhere).
+- Wired into the workspace shell Preview tab. Gates: 23/23 preview+template
+  tests, tsc + lint clean, build clean. Browser/axe verification deferred to M8.
+
+## M4 — ZIP export (complete)
+- `projects/export.ts` (fflate): POSIX normalize, traversal/drive/NUL/empty/
+  duplicate rejection with offending path, secrets skipped (.env*, *.pem,
+  *.key), 20 MB cap, sanitized filename. 14 tests green first run.
+- Route `GET .../[id]/export`: auth → ownership → ZIP (`application/zip`,
+  attachment filename) or structured `{error, path?}` (401/404/422).
+- UI: `ExportButton` (loading/error states) in workspace header + Files-tab
+  rows (minimal read-only file list added to the shell for this), plus
+  `RunDownloadLink` ("Done — updated X. Download ZIP") ready for the chat
+  rebuild — all three hit the same route.
+- Acceptance proven for real: blog template exported, `pnpm install` +
+  `pnpm build` (vite) succeeded in /tmp.
+- Gates: tsc + lint clean, build clean, 37/37 in-scope tests.
 ## M2 — six templates + picker (complete)
 - `templates/shared.ts`: base files (React 19.2.8 pkg, index.html, main.tsx,
   tsconfig, vite config), theme delimiters `/* vibecoder:theme:start|end */`.

@@ -268,3 +268,55 @@ describe("compacted context", () => {
     vi.unstubAllGlobals();
   });
 });
+describe("LlmAgent attachments", () => {
+  it("sends image_url blocks with detail auto and labeled document text", async () => {
+    const fetcher = fetchReply(JSON.stringify({ reply: "saw blue", edits: [] }));
+    vi.stubGlobal("fetch", fetcher);
+    const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
+    await agent.run("match this", {}, {
+      attachments: [
+        { kind: "image", name: "ui.png", mimeType: "image/png", imageUrl: "data:image/png;base64,AAA", detail: "auto" },
+        { kind: "document", name: "spec.md", mimeType: "text/plain", extractedText: "must be blue", truncated: false },
+      ],
+    });
+    const body = sentBody(fetcher);
+    const content = (body.messages as { content: unknown }[])[1].content as { type: string; image_url?: { detail: string } }[];
+    expect(Array.isArray(content)).toBe(true);
+    expect(content.find((b) => b.type === "image_url")?.image_url?.detail).toBe("auto");
+    expect(JSON.stringify(content)).toContain("spec.md");
+    expect(JSON.stringify(content)).toContain("must be blue");
+    vi.unstubAllGlobals();
+  });
+
+  it("sends timestamped low-detail video frames", async () => {
+    const fetcher = fetchReply(JSON.stringify({ reply: "moving", edits: [] }));
+    vi.stubGlobal("fetch", fetcher);
+    const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
+    await agent.run("describe", {}, {
+      attachments: [
+        {
+          kind: "videoFrames",
+          name: "clip.mp4",
+          mimeType: "video/mp4",
+          frames: [{ timestampMs: 0, imageUrl: "data:image/jpeg;base64,A", detail: "low" }],
+        },
+      ],
+    });
+    const body = sentBody(fetcher);
+    const flat = JSON.stringify((body.messages as { content: unknown }[])[1].content);
+    expect(flat).toContain("@0ms");
+    expect(flat).toContain("clip.mp4");
+    expect(flat).not.toContain("video/mp4\";base64");
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps text-only requests a plain string", async () => {
+    const fetcher = fetchReply(JSON.stringify({ reply: "ok", edits: [] }));
+    vi.stubGlobal("fetch", fetcher);
+    const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
+    await agent.run("hi", {});
+    const body = sentBody(fetcher);
+    expect(typeof (body.messages as { content: unknown }[])[1].content).toBe("string");
+    vi.unstubAllGlobals();
+  });
+});
