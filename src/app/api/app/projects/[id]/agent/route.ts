@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
-import { findOwnedProject, runPrompt } from "@/lib/projects";
+import { findOwnedProject } from "@/lib/projects";
+import { runTurn, type AgentKind } from "@/lib/orchestrator";
 import {
   checkRequestBounds,
   validateAttachmentBytes,
@@ -30,6 +31,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const modelId = typeof rawModel === "string" && rawModel ? rawModel : undefined;
   const rawMode = form.get("mode");
   const mode = rawMode === "plan" || rawMode === "mission" || rawMode === "skills" ? rawMode : "build";
+  // Test seam: honored only when explicitly enabled server-side, so UI and
+  // production traffic can never select it.
+  const rawAgent = form.get("agent");
+  const agent: AgentKind =
+    rawAgent === "mock" && process.env.VIBECODER_AGENT_MOCK === "1" ? "mock" : "auto";
   const uploads = form.getAll("attachments").filter((v): v is File => v instanceof File);
   if (!message && uploads.length === 0) {
     return Response.json({ ok: false, error: "Prompt is empty." }, { status: 400 });
@@ -92,9 +98,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const metadata = JSON.stringify({ attachments: described, exportUrl });
 
   const result = await measure("agent.turn", () =>
-    runPrompt(user.id, id, message || "(attachments only)", modelId, true, [], mode, undefined, {}, attachments, metadata),
+    runTurn({
+      userId: user.id,
+      projectId: id,
+      text: message || "(attachments only)",
+      attachments,
+      metadata,
+      modelId,
+      mode,
+      agent,
+    }),
   );
-  if (!result.ok) {
+  if (result.status === "failed") {
     return Response.json({ ok: false, error: result.error, notice: result.notice }, { status: 400 });
   }
   return Response.json({
@@ -107,7 +122,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     usage: result.usage,
     notice: result.notice,
     changedPaths: result.changedPaths,
-    success: result.success,
+    validation: result.validation,
+    success: true,
     exportUrl,
     attachments: described,
   });

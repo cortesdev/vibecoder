@@ -67,7 +67,17 @@ export function findEntry(files: Files): string {
 
 /** Readable one-line summary of an esbuild failure. */
 export function formatBuildError(e: unknown): string {
-  if (e instanceof Error) return e.message.split("\n").slice(0, 8).join("\n");
+  if (e instanceof Error) {
+    const details = (e as { errors?: { text?: unknown; location?: { file?: unknown } }[] }).errors;
+    if (Array.isArray(details) && details.length > 0) {
+      const lines = details.slice(0, 8).map((d) => {
+        const where = typeof d.location?.file === "string" ? `${d.location.file}: ` : "";
+        return `${where}${typeof d.text === "string" ? d.text : "build error"}`;
+      });
+      return `${e.message.split("\n")[0]}\n${lines.join("\n")}`;
+    }
+    return e.message.split("\n").slice(0, 8).join("\n");
+  }
   return "Preview build failed.";
 }
 

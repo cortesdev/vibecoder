@@ -28,6 +28,7 @@ const scrubbed: Record<string, string> = {
   OPENAI_API_KEY: "",
   VIBECODER_ANTHROPIC_API_KEY: "",
   VIBECODER_OPENAI_API_KEY: "",
+  VIBECODER_AGENT_MOCK: "1",
 };
 
 export default defineConfig({

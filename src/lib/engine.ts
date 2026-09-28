@@ -277,8 +277,33 @@ export async function runModelPrompt(input: {
   prompt: string;
   files: Record<string, string>;
   useFreeTokens?: boolean;
+  /** Test seam: "mock" runs MockAgent with no keys, no debits, no network.
+   *  Never offered in UI; the agent route only honors it when explicitly
+   *  enabled server-side. */
+  agentKind?: "auto" | "mock";
   run: (agent: Agent) => Promise<import("./agent/types").AgentResult>;
 }): Promise<RunOutcome> {
+  if (input.agentKind === "mock") {
+    const started = Date.now();
+    try {
+      const { edits, reply, usage, plan, suggestions, skillIds } = await input.run(new MockAgent());
+      return {
+        ok: true,
+        edits,
+        reply,
+        usage,
+        plan,
+        suggestions,
+        skillIds,
+        modelId: "mock",
+        modelLabel: "Mock Agent",
+        providerLabel: "Mock",
+        latencyMs: Date.now() - started,
+      };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "Mock agent failed" };
+    }
+  }
   const requested = input.modelId ? getModel(input.modelId) : null;
   const model = requested ?? getModel(DEFAULT_MODEL_ID)!;
 

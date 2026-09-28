@@ -208,6 +208,7 @@ export async function runPrompt(
   executionContext: PromptExecutionContext = {},
   agentAttachments: AgentAttachment[] = [],
   metadata?: string,
+  agentKind: "auto" | "mock" = "auto",
 ) {
   const project = await findOwnedProject(userId, projectId);
   if (!project) return { ok: false as const, error: "not_found" };
@@ -231,6 +232,21 @@ export async function runPrompt(
     attachments: agentAttachments,
   };
 
+  // History account: the caller passes static context (attachments, export
+  // URL); the run outcome (routing, usage, changed paths) is merged here so
+  // reload renders exactly what the live turn showed.
+  function historyMetadata(extra: Record<string, unknown> = {}): string | undefined {
+    if (metadata === undefined && Object.keys(extra).length === 0) return undefined;
+    let base: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = metadata ? JSON.parse(metadata) : {};
+      if (parsed && typeof parsed === "object") base = parsed as Record<string, unknown>;
+    } catch {
+      base = {};
+    }
+    return JSON.stringify({ ...base, ...extra });
+  }
+
   const outcome = await runModelPrompt({
     userId,
     projectId,
@@ -238,6 +254,7 @@ export async function runPrompt(
     prompt: trimmed,
     files,
     useFreeTokens,
+    agentKind,
     run: async (agent) => {
       let result;
       try {
@@ -286,7 +303,14 @@ export async function runPrompt(
   if (valid.length === 0 && outcome.reply?.trim()) {
     // Pure conversational turn: no code changed, the answer is the result.
     await db.prompt.create({ data: { projectId, content: trimmed, role: "user", mode } });
-    await db.prompt.create({
+    const convoMeta = historyMetadata({
+      providerLabel: outcome.providerLabel,
+      latencyMs: outcome.latencyMs,
+      tokens: outcome.usage?.totalTokens,
+      notice: outcome.notice,
+      changedPaths: [],
+    });
+    const assistantRow = await db.prompt.create({
       data: {
         projectId,
         content: outcome.reply.trim(),
@@ -294,7 +318,7 @@ export async function runPrompt(
         mode,
         modelId: outcome.modelId ?? "",
         modelLabel: outcome.modelLabel ?? "",
-        ...(metadata === undefined ? {} : { metadata }),
+        ...(convoMeta === undefined ? {} : { metadata: convoMeta }),
       },
     });
     await recordExecutionLearning({
@@ -317,6 +341,7 @@ export async function runPrompt(
       reply: outcome.reply.trim(),
       changedPaths: [] as string[],
       success: true as const,
+      assistantPromptId: assistantRow.id,
     };
   }
 
@@ -378,7 +403,14 @@ export async function runPrompt(
     (applied.length
       ? `Done — updated ${applied.join(", ")}.`
       : "All set — no file changes were needed.");
-  await db.prompt.create({
+  const appliedMeta = historyMetadata({
+    providerLabel: outcome.providerLabel,
+    latencyMs: outcome.latencyMs,
+    tokens: outcome.usage?.totalTokens,
+    notice: outcome.notice,
+    changedPaths: applied,
+  });
+  const assistantRow = await db.prompt.create({
     data: {
       projectId,
       content: assistantText,
@@ -386,7 +418,7 @@ export async function runPrompt(
       mode,
       modelId: outcome.modelId ?? "",
       modelLabel: outcome.modelLabel ?? "",
-      ...(metadata === undefined ? {} : { metadata }),
+      ...(appliedMeta === undefined ? {} : { metadata: appliedMeta }),
     },
   });
   await recordExecutionLearning({
@@ -418,7 +450,48 @@ export async function runPrompt(
     notice: outcome.notice,
     changedPaths: applied,
     success: true as const,
+    assistantPromptId: assistantRow.id,
   };
+}
+
+/** Merge a patch into a prompt row's metadata JSON. Ownership-checked. */
+export async function updatePromptMetadata(userId: string, promptId: string, patch: Record<string, unknown>) {
+  const row = await db.prompt.findUnique({ where: { id: promptId } });
+  if (!row) return { ok: false as const, error: "not_found" as const };
+  const project = await db.project.findUnique({ where: { id: row.projectId } });
+  if (!project || project.userId !== userId) return { ok: false as const, error: "not_found" as const };
+  let base: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = row.metadata ? JSON.parse(row.metadata) : {};
+    if (parsed && typeof parsed === "object") base = parsed as Record<string, unknown>;
+  } catch {
+    base = {};
+  }
+  await db.prompt.update({ where: { id: promptId }, data: { metadata: JSON.stringify({ ...base, ...patch }) } });
+  return { ok: true as const };
+}
+
+/** Restore an exact file snapshot (last-working-revision safety net):
+ *  upserts snapshot entries, deletes anything created after it. */
+export async function restoreProjectFiles(
+  userId: string,
+  projectId: string,
+  snapshot: Record<string, string>,
+) {
+  const project = await findOwnedProject(userId, projectId);
+  if (!project) return { ok: false as const, error: "not_found" as const };
+  const current = new Set(project.files.map((f) => f.path));
+  for (const [path, content] of Object.entries(snapshot)) {
+    await db.projectFile.upsert({
+      where: { projectId_path: { projectId, path } },
+      create: { projectId, path, content },
+      update: { content },
+    });
+  }
+  for (const path of current) {
+    if (!(path in snapshot)) await db.projectFile.deleteMany({ where: { projectId, path } });
+  }
+  return { ok: true as const, restored: Object.keys(snapshot).length };
 }
 
 /** Apply a pending change: write `after` into the project file. */
@@ -459,17 +532,89 @@ export async function revertChange(userId: string, changeId: string) {
 
 /** Direct editor save. Returns null result object when not owned / bad path. */
 export async function saveFile(userId: string, projectId: string, rawPath: string, content: string) {
+  const saved = await saveProjectFile(userId, projectId, rawPath, content);
+  if (!saved.ok && saved.error === "not_found") return { ok: false as const, error: "not_found" as const };
+  if (!saved.ok) return { ok: false as const, error: "invalid_path" as const };
+  return { ok: true as const };
+}
+
+/** Create a project file. Refuses invalid paths and occupied targets. */
+export async function createProjectFile(userId: string, projectId: string, rawPath: string, content = "") {
   const project = await findOwnedProject(userId, projectId);
   if (!project) return { ok: false as const, error: "not_found" as const };
   const path = sanitizePath(rawPath);
   if (!isValidProjectPath(path)) return { ok: false as const, error: "invalid_path" as const };
-
+  const existing = await db.projectFile.findUnique({ where: { projectId_path: { projectId, path } } });
+  if (existing) return { ok: false as const, error: "exists" as const };
   await db.projectFile.upsert({
     where: { projectId_path: { projectId, path } },
     create: { projectId, path, content },
     update: { content },
   });
-  return { ok: true as const };
+  return { ok: true as const, path };
+}
+
+/** Conflict-checked save: when `expectedContent` is given and the stored
+ *  bytes differ (edited elsewhere since the editor loaded), the write is
+ *  refused with the current content instead of clobbering it. */
+export async function saveProjectFile(
+  userId: string,
+  projectId: string,
+  rawPath: string,
+  content: string,
+  expectedContent?: string,
+) {
+  const project = await findOwnedProject(userId, projectId);
+  if (!project) return { ok: false as const, error: "not_found" as const };
+  const path = sanitizePath(rawPath);
+  if (!isValidProjectPath(path)) return { ok: false as const, error: "invalid_path" as const };
+  if (expectedContent !== undefined) {
+    const current = await db.projectFile.findUnique({ where: { projectId_path: { projectId, path } } });
+    if (current && current.content !== expectedContent) {
+      return { ok: false as const, error: "conflict" as const, conflict: true as const, current: current.content };
+    }
+  }
+  await db.projectFile.upsert({
+    where: { projectId_path: { projectId, path } },
+    create: { projectId, path, content },
+    update: { content },
+  });
+  return { ok: true as const, path };
+}
+
+/** Rename a file. Refuses invalid paths, missing sources, occupied targets. */
+export async function renameProjectFile(userId: string, projectId: string, rawFrom: string, rawTo: string) {
+  const project = await findOwnedProject(userId, projectId);
+  if (!project) return { ok: false as const, error: "not_found" as const };
+  const from = sanitizePath(rawFrom);
+  const to = sanitizePath(rawTo);
+  if (!isValidProjectPath(from) || !isValidProjectPath(to)) {
+    return { ok: false as const, error: "invalid_path" as const };
+  }
+  if (from === to) return { ok: true as const, path: to };
+  const [source, target] = await Promise.all([
+    db.projectFile.findUnique({ where: { projectId_path: { projectId, path: from } } }),
+    db.projectFile.findUnique({ where: { projectId_path: { projectId, path: to } } }),
+  ]);
+  if (!source) return { ok: false as const, error: "not_found" as const };
+  if (target) return { ok: false as const, error: "exists" as const };
+  await db.projectFile.deleteMany({ where: { projectId, path: from } });
+  await db.projectFile.upsert({
+    where: { projectId_path: { projectId, path: to } },
+    create: { projectId, path: to, content: source.content },
+    update: { content: source.content },
+  });
+  return { ok: true as const, path: to };
+}
+
+/** Delete a project file. */
+export async function deleteProjectFile(userId: string, projectId: string, rawPath: string) {
+  const project = await findOwnedProject(userId, projectId);
+  if (!project) return { ok: false as const, error: "not_found" as const };
+  const path = sanitizePath(rawPath);
+  if (!isValidProjectPath(path)) return { ok: false as const, error: "invalid_path" as const };
+  await db.projectFile.deleteMany({ where: { projectId, path } });
+  return { ok: true as const, path };
 }
 
 export const PRESET_CSS_PATH = "src/index.css";

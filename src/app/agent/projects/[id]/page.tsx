@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
-import { findOwnedProject } from "@/lib/projects";
+import { findOwnedProject, listServiceKeys } from "@/lib/projects";
 import { currentUser } from "@/lib/auth";
 import { checkFreeReadiness } from "@/lib/readiness";
+import { INTEGRATIONS } from "@/lib/integrations";
 import ProjectBuilder, { type ChatMessageDto } from "@/components/projects/project-builder";
 import DeleteProject from "@/components/projects/delete-project";
 
@@ -25,9 +26,10 @@ export default async function ProjectPage({
   const user = await currentUser();
   if (!user) notFound();
 
-  const [project, readiness] = await Promise.all([
+  const [project, readiness, integrationCounts] = await Promise.all([
     findOwnedProject(user.id, id),
     checkFreeReadiness(user.id),
+    listServiceKeys(user.id),
   ]);
   if (!project) notFound();
 
@@ -54,14 +56,42 @@ export default async function ProjectPage({
     }),
   ]);
 
-  const messages: ChatMessageDto[] = rows.map((r) => ({
-    id: r.id,
-    role: r.role === "assistant" ? "assistant" : "user",
-    content: r.content,
-    mode: r.mode,
-    modelLabel: r.modelLabel,
-    error: r.error,
-    createdAt: r.createdAt.toISOString(),
+  const messages: ChatMessageDto[] = rows.map((r) => {
+    // Run history: the assistant row carries its own account (attachments,
+    // export URL, changed paths, routing) so reload shows what the live
+    // turn showed. Unparseable metadata degrades to the plain message.
+    let meta: {
+      attachments?: unknown;
+      exportUrl?: unknown;
+      changedPaths?: unknown;
+      providerLabel?: unknown;
+      latencyMs?: unknown;
+      tokens?: unknown;
+      notice?: unknown;
+    } = {};
+    try {
+      const parsed: unknown = r.metadata ? JSON.parse(r.metadata) : {};
+      if (parsed && typeof parsed === "object") meta = parsed as typeof meta;
+    } catch {
+      meta = {};
+    }
+    const changedPaths = Array.isArray(meta.changedPaths)
+      ? meta.changedPaths.filter((p): p is string => typeof p === "string")
+      : [];
+    return {
+      id: r.id,
+      role: r.role === "assistant" ? "assistant" : "user",
+      content: r.content,
+      mode: r.mode,
+      modelLabel: r.modelLabel,
+      error: r.error,
+      createdAt: r.createdAt.toISOString(),
+      providerLabel: typeof meta.providerLabel === "string" ? meta.providerLabel : undefined,
+      latencyMs: typeof meta.latencyMs === "number" ? meta.latencyMs : undefined,
+      tokens: typeof meta.tokens === "number" ? meta.tokens : undefined,
+      notice: typeof meta.notice === "string" ? meta.notice : undefined,
+      exportUrl: typeof meta.exportUrl === "string" ? meta.exportUrl : undefined,
+      changedCount: changedPaths.length > 0 ? changedPaths.length : undefined,
     changes: (r.id ? allChanges.filter((c) => c.promptId === r.id) : []).map((c) => ({
       id: c.id,
       path: c.path,
@@ -70,7 +100,8 @@ export default async function ProjectPage({
       after: c.after,
       createdAt: c.createdAt.toISOString(),
     })),
-  }));
+    };
+  });
 
   return (
     <div className="flex min-w-0 min-h-0 flex-1 flex-col px-4">
@@ -99,6 +130,8 @@ export default async function ProjectPage({
         initialModelId={initialModelId}
         initialPresetId={project.activePresetId}
         readiness={readiness}
+        integrations={INTEGRATIONS}
+        integrationCounts={integrationCounts}
       />
     </div>
   );

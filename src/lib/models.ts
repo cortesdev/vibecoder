@@ -9,6 +9,13 @@ export type ProviderId = "vibecoder" | "opencode" | "google" | "groq" | "openrou
 
 
 
+export interface ModelCapabilities {
+  /** Accepts OpenAI image_url content blocks. */
+  vision: boolean;
+  /** Accepts OpenAI-style tool calls. */
+  tools: boolean;
+}
+
 export interface ModelDef {
   id: string; // stable id used in the API
   label: string;
@@ -23,6 +30,7 @@ export interface ModelDef {
   /** Context window in tokens (for the session context meter). */
   contextLimit: number;
   note: string;
+  capabilities: ModelCapabilities;
 }
 
 // Nothing from OpenCode Zen's free tier belongs here. Its models are gated at
@@ -43,6 +51,7 @@ export const MODELS: ModelDef[] = [
   byok: true,
   contextLimit: 131072,
   note: "Available on Groq's free plan, subject to account and token limits.",
+  capabilities: { vision: false, tools: true },
 },
   {
     id: "openrouter-free",
@@ -59,6 +68,7 @@ export const MODELS: ModelDef[] = [
     byok: true,
     contextLimit: 200000,
     note: "OpenRouter's free route — 50 requests/day per key, shared by every user of that key.",
+    capabilities: { vision: true, tools: true },
   },
   {
     id: "cerebras-llama",
@@ -74,6 +84,7 @@ export const MODELS: ModelDef[] = [
     byok: true,
     contextLimit: 128000,
     note: "Available on Cerebras' free plan, subject to account and token limits.",
+    capabilities: { vision: false, tools: true },
   },
   {
     id: "glm-flash",
@@ -89,6 +100,7 @@ export const MODELS: ModelDef[] = [
     byok: true,
     contextLimit: 128000,
     note: "Z.ai's free tier: GLM-4.5-Flash is priced at $0. Key from z.ai, or served by the platform.",
+    capabilities: { vision: false, tools: true },
   },
   {
     id: "hf-gpt-oss",
@@ -105,6 +117,7 @@ export const MODELS: ModelDef[] = [
     byok: true,
     contextLimit: 131072,
     note: "Hugging Face Inference Providers free credit (HF_TOKEN), subject to monthly credit limits.",
+    capabilities: { vision: false, tools: true },
   },
   {
     id: "custom-auto",
@@ -120,6 +133,7 @@ export const MODELS: ModelDef[] = [
     byok: true,
     contextLimit: 128000,
     note: "Your own gateway — set VIBECODER_BASE_URL_CUSTOM plus its key.",
+    capabilities: { vision: true, tools: true },
   },
   {
     id: "nemotron",
@@ -133,6 +147,7 @@ export const MODELS: ModelDef[] = [
     byok: true,
     contextLimit: 128000,
     note: "Free via NVIDIA NIM (build.nvidia.com), subject to NVIDIA trial limits.",
+    capabilities: { vision: false, tools: true },
   },
 {
     id: "gemini-flash",
@@ -150,6 +165,7 @@ export const MODELS: ModelDef[] = [
     byok: true,
     contextLimit: 1000000,
     note: "Google's free tier (quota-limited): key from Google AI Studio, or served by the platform.",
+    capabilities: { vision: true, tools: true },
   },
   {
     id: "sonnet",
@@ -161,6 +177,7 @@ export const MODELS: ModelDef[] = [
     byok: false,
     contextLimit: 200000,
     note: "Best for whole features. Billed from credits.",
+    capabilities: { vision: true, tools: true },
   },
   {
     id: "haiku",
@@ -172,6 +189,7 @@ export const MODELS: ModelDef[] = [
     byok: false,
     contextLimit: 200000,
     note: "Fast small edits. Billed from credits.",
+    capabilities: { vision: true, tools: true },
   },
   {
     id: "gpt",
@@ -183,6 +201,7 @@ export const MODELS: ModelDef[] = [
     byok: false,
     contextLimit: 200000,
     note: "Balanced quality. Billed from credits.",
+    capabilities: { vision: true, tools: true },
   },
   {
     id: "openrouter-paid",
@@ -194,6 +213,7 @@ export const MODELS: ModelDef[] = [
     byok: true,
     contextLimit: 200000,
     note: "Use your OpenRouter key to access any model. You're billed by OpenRouter directly.",
+    capabilities: { vision: true, tools: true },
   },
 ];
 

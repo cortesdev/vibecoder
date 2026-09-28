@@ -55,4 +55,12 @@ describe("model registry", () => {
       expect(model.cost, model.id).toBeGreaterThan(0);
     }
   });
+
+  it("declares capabilities for every model, with a vision fallback in the free chain", () => {
+    for (const model of MODELS) {
+      expect(typeof model.capabilities.vision, model.id).toBe("boolean");
+      expect(typeof model.capabilities.tools, model.id).toBe("boolean");
+    }
+    expect(freeModels().some((m) => m.capabilities.vision)).toBe(true);
+  });
 });

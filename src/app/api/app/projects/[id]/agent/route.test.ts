@@ -3,14 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireUser: vi.fn(),
   findOwnedProject: vi.fn(),
-  runPrompt: vi.fn(),
+  runTurn: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser }));
-vi.mock("@/lib/projects", () => ({
-  findOwnedProject: mocks.findOwnedProject,
-  runPrompt: mocks.runPrompt,
-}));
+vi.mock("@/lib/projects", () => ({ findOwnedProject: mocks.findOwnedProject }));
+vi.mock("@/lib/orchestrator", () => ({ runTurn: mocks.runTurn }));
 
 import { POST } from "./route";
 
@@ -47,13 +45,12 @@ describe("POST .../agent", () => {
   });
 
   it("runs a text turn and returns the typed contract", async () => {
-    mocks.runPrompt.mockResolvedValue({
-      ok: true,
+    mocks.runTurn.mockResolvedValue({
+      status: "completed",
       reply: "done",
       modelId: "m",
       modelLabel: "M",
       changedPaths: ["src/App.tsx"],
-      success: true,
     });
     const form = new FormData();
     form.set("message", "make it blue");
@@ -62,19 +59,30 @@ describe("POST .../agent", () => {
     const data = (await res.json()) as Record<string, unknown>;
     expect(data).toMatchObject({ ok: true, reply: "done", changedPaths: ["src/App.tsx"], success: true });
     expect(data).toHaveProperty("exportUrl", "/api/app/projects/p1/export");
-    const meta = mocks.runPrompt.mock.calls[0][10] as string;
-    expect(JSON.parse(meta)).toMatchObject({ exportUrl: "/api/app/projects/p1/export" });
+    const input = mocks.runTurn.mock.calls[0][0] as { metadata: string; agent: string };
+    expect(JSON.parse(input.metadata)).toMatchObject({ exportUrl: "/api/app/projects/p1/export" });
+    expect(input.agent).toBe("auto");
+  });
+
+  it("passes the mock seam through only as requested", async () => {
+    mocks.runTurn.mockResolvedValue({ status: "completed", reply: "m", changedPaths: [] });
+    const form = new FormData();
+    form.set("message", "x");
+    form.set("agent", "mock");
+    await POST(req(form), params);
+    // Env gate off in tests: the seam stays "auto".
+    expect((mocks.runTurn.mock.calls[0][0] as { agent: string }).agent).toBe("auto");
   });
 
   it("forwards an image_url attachment into the agent payload", async () => {
-    mocks.runPrompt.mockResolvedValue({ ok: true, reply: "blue", changedPaths: [], success: true });
+    mocks.runTurn.mockResolvedValue({ status: "completed", reply: "blue", changedPaths: [] });
     const png = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1])], "ui.png", { type: "image/png" });
     const form = new FormData();
     form.set("message", "match this");
     form.append("attachments", png);
     const res = await POST(req(form), params);
     expect(res.status).toBe(200);
-    const seen = mocks.runPrompt.mock.calls[0][9] as { kind: string }[];
+    const seen = (mocks.runTurn.mock.calls[0][0] as { attachments: { kind: string }[] }).attachments;
     expect(seen).toHaveLength(1);
     expect(seen[0].kind).toBe("image");
   });
@@ -88,7 +96,7 @@ describe("POST .../agent", () => {
     expect(res.status).toBe(413);
     const data = (await res.json()) as Record<string, unknown>;
     expect(String(data.error)).toContain("8 MB per file");
-    expect(mocks.runPrompt).not.toHaveBeenCalled();
+    expect(mocks.runTurn).not.toHaveBeenCalled();
   });
 
   it("returns 415 for spoofed content without calling the agent", async () => {
@@ -98,7 +106,7 @@ describe("POST .../agent", () => {
     form.append("attachments", mz);
     const res = await POST(req(form), params);
     expect(res.status).toBe(415);
-    expect(mocks.runPrompt).not.toHaveBeenCalled();
+    expect(mocks.runTurn).not.toHaveBeenCalled();
   });
 
   it("returns an actionable 415 for video with no extractor", async () => {
@@ -114,6 +122,6 @@ describe("POST .../agent", () => {
     expect(res.status).toBe(415);
     const data = (await res.json()) as Record<string, unknown>;
     expect(String(data.error)).toContain("cannot process video");
-    expect(mocks.runPrompt).not.toHaveBeenCalled();
+    expect(mocks.runTurn).not.toHaveBeenCalled();
   });
 });

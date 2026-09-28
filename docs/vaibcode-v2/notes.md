@@ -190,3 +190,84 @@ assertion) + jsdom/undici worker errors in component tests.
   7 pre-existing failures, Playwright 1/1.
 - Deferred honestly: live-model attachment proof (needs keys), load testing
   (budgets set, not measured), plan/apply flows (`planPrompt` etc. reserved).
+
+## Refactor pass — architecture integration (in progress)
+Baseline on this HEAD: tsc clean, 189 passed / 7 pre-existing failures.
+Trace findings: composers duplicate FormData logic; page ignores run
+metadata; `?prompt=` accepted but ignored; runs never validate output;
+no model capability flags; workspace hidden on mobile; success reported
+from HTTP status. ADR: `docs/vaibcode-v2/adr-orchestrator.md`.
+
+### Slice 1 — orchestrator seam + mock success (complete)
+- `engine.runModelPrompt` accepts `agentKind: "auto"|"mock"` (mock: no keys,
+  debits, or network); threaded through `runPrompt`.
+- `orchestrator.runTurn` (tested: completed/failed mapping, seam passthrough);
+  agent route uses it, honors `agent:"mock"` only when
+  `VIBECODER_AGENT_MOCK=1`.
+- Page parses `Prompt.metadata` back into footers; `runPrompt` merges routing
+  outcome into stored metadata → reload shows the same account + ZIP link.
+- e2e `mock-success.spec.ts` GREEN (3.8s): create → mock turn (changedPaths)
+  → preview renders → reload shows routed-via + ZIP → download works.
+
+### Slice 2 — Editor + cross-tab workspace state (complete)
+- `projects.ts`: `createProjectFile` (refuses occupied), `saveProjectFile`
+  (409 with current bytes on stale `expectedContent`), `renameProjectFile`,
+  `deleteProjectFile` — all ownership + sandbox validated. 6 service tests.
+- Routes: collection POST/PATCH/DELETE + single GET/PUT (5 route tests).
+- `editor-panel.tsx`: edit, Cmd/Ctrl+S save, dirty dot, conflict UI with
+  overwrite/reload-theirs, diagnostics prop. `files-panel.tsx`: list, open,
+  create, rename, delete, per-row ZIP.
+- `workspace-shared.tsx` holds DTOs + download UI (no component cycle).
+- Shell store: `saved` (server) + `dirty` per path + selection + diagnostics;
+  mutations update all views and refresh server truth. Fixed real bug found
+  by e2e: merge resurrected deleted files — mutations now refresh.
+- Mobile: Chat/Workspace switcher replaces `hidden md:flex`.
+- e2e: create→edit→save→reload persists, stale write 409s honestly, delete
+  propagates, mobile switch works. Gates: tsc/lint(0 err)/build green.
+
+### Slice 3 — capability gate + validation + bounded repair (complete)
+- `ModelDef.capabilities: { vision, tools }` declared for all 12 registry
+  entries; vision true for openrouter-free, custom-auto, gemini-flash,
+  sonnet, haiku, gpt, openrouter-paid. Registry test asserts every model
+  declares both flags and that the free chain has a vision fallback.
+- `preview/validate.ts`: Node-side `validateProject` reusing `bundleJs`;
+  returns file-attributed diagnostics for the editor. 3 tests (pass, broken
+  import, path attribution). `formatBuildError` now surfaces esbuild's
+  `errors[]` (it previously lost detail to the first message line).
+- `orchestrator.resolveVisionModel`: an image/video turn never reaches a
+  blind model — it reroutes to vision with a notice, or fails unserved
+  before any billable call. Text turns are untouched.
+- `runTurn` now: understanding (capability) → editing (persist) →
+  validating (bundle). On failure exactly ONE bounded repair turn; if that
+  also fails, `restoreProjectFiles` rolls back to the last working revision
+  and the turn reports failed — never "Done". Answer-only turns complete
+  without a build. Validation outcome persisted onto the assistant turn's
+  metadata and returned to the client.
+- `projects.ts`: runPrompt returns `assistantPromptId`; added
+  `updatePromptMetadata` (ownership-checked merge) and `restoreProjectFiles`
+  (upsert snapshot, delete files created after it).
+- Bug found by the e2e gate: validation failed in the Next server with
+  "The service is no longer running" — esbuild-wasm was being bundled, so
+  its worker host broke outside the browser. Fixed with
+  `serverExternalPackages: ["esbuild-wasm"]` in `next.config.ts`.
+- Gates: tsc clean; vitest 216 pass / 7 pre-existing fail (no regressions,
+  +27 new tests); playwright 4/4; build clean; lint 0 errors.
+
+### Slice 4 — editor diagnostics, integrations, vision coverage (complete)
+- Turn validation now reaches the Editor: `applyValidation` maps the
+  response's per-file errors into the existing diagnostics store, a manual
+  save clears that file's diagnostics, and a failed turn (which rolled files
+  back) clears them all so nothing points at code that no longer exists.
+- `integrations-panel.tsx`: the placeholder tab is now a real surface over
+  the pre-existing `/api/app/integrations` GET/POST/DELETE API — category
+  filter, connect form (key + label), connected counts, and remove. Keys are
+  write-only from the client: the panel only ever receives counts, so a key
+  cannot come back after being saved. Project page passes the catalog +
+  counts from `listServiceKeys`.
+- Closed a real gap from the baseline audit: `initialPrompt` was declared in
+  the prop types but never destructured, so `?prompt=` deep links were
+  silently dropped. It now pre-fills the composer.
+- e2e: an image turn pinned to the blind `groq-gpt-oss` is rerouted to a
+  vision model and says so; integrations connect → 1 connected → remove.
+- Gates: tsc clean; vitest 216 pass / 7 pre-existing fail; playwright 6/6;
+  build clean; lint 0 errors.
