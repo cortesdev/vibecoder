@@ -103,7 +103,7 @@ describe("POST .../agent", () => {
 
   it("returns an actionable 415 for video with no extractor", async () => {
     const mp4 = new File(
-      [new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 1, 2, 3])],
+      [new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 1, 2, 3, 4])],
       "clip.mp4",
       { type: "video/mp4" },
     );

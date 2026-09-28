@@ -1,12 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import PreviewPane from "./preview-pane";
+import AttachmentPicker, { type PickedFile } from "./attachment-picker";
+import ModelPicker from "@/components/app/model-picker";
+import { DEFAULT_MODEL_ID } from "@/lib/models";
+import { downscaleImage } from "@/lib/attachments/client";
 import type { ModelReadiness } from "@/lib/readiness";
 
-// Clean-slate workspace shell (vaibcode-V2 rebuild). Layout only: a read-only
-// chat thread on the left, empty workspace tabs on the right. No fetching, no
-// agent calls, no editing — every behavior is re-added slice by slice.
+// Rebuilding workspace (vaibcode-V2). Chat sends text + attachments as
+// multipart to the agent route; workspace tabs host the rebuilt panels.
 
 export interface ProjectFileDto {
   path: string;
@@ -31,6 +35,16 @@ export interface ChatMessageDto {
   error: string;
   createdAt: string;
   changes: ChangeDto[];
+  providerLabel?: string;
+  latencyMs?: number;
+  tokens?: number;
+  notice?: string;
+  changedCount?: number;
+}
+
+function fmtLatency(ms: number | undefined): string | null {
+  if (ms === undefined || !Number.isFinite(ms) || ms < 0) return null;
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
 }
 
 const TABS = ["Files", "Editor", "Preview", "Presets", "Integrations"] as const;
@@ -100,6 +114,8 @@ export default function ProjectBuilder({
   initialFiles,
   initialMessages,
   initialNotice,
+  initialModelId,
+  readiness = [],
 }: {
   projectId: string;
   initialFiles: ProjectFileDto[];
@@ -116,6 +132,94 @@ export default function ProjectBuilder({
     () => Object.fromEntries(initialFiles.map((f) => [f.path, f.content])),
     [initialFiles],
   );
+  const [messages, setMessages] = useState<ChatMessageDto[]>(initialMessages);
+  const [text, setText] = useState("");
+  const [picked, setPicked] = useState<PickedFile[]>([]);
+  const [modelId, setModelId] = useState(
+    initialModelId && initialModelId.trim() ? initialModelId : DEFAULT_MODEL_ID,
+  );
+  const [busy, setBusy] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const router = useRouter();
+
+  async function send(e?: React.FormEvent) {
+    e?.preventDefault();
+    const message = text.trim();
+    const valid = picked.filter((p) => !p.error);
+    if ((!message && valid.length === 0) || busy) return;
+    setBusy(true);
+    setSendError("");
+    // Optimistic user turn; typed text is only cleared once the server answers.
+    const userMsg: ChatMessageDto = {
+      id: `local-user-${Date.now()}`,
+      role: "user",
+      content: message || valid.map((p) => p.file.name).join(", "),
+      mode: "build",
+      modelLabel: "",
+      error: "",
+      createdAt: new Date().toISOString(),
+      changes: [],
+    };
+    setMessages((prev) => [...prev, userMsg]);
+    try {
+      const form = new FormData();
+      form.set("message", message);
+      if (modelId) form.set("modelId", modelId);
+      for (const p of valid) {
+        let blob: Blob = p.file;
+        if (p.file.type === "image/png" || p.file.type === "image/jpeg" || p.file.type === "image/webp") {
+          try {
+            blob = (await downscaleImage(p.file)).blob;
+          } catch {
+            // No browser imaging here — ship the original, server validates.
+          }
+        }
+        form.append("attachments", blob, p.file.name);
+      }
+      const res = await fetch(`/api/app/projects/${projectId}/agent`, { method: "POST", body: form });
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        error?: string;
+        reply?: string;
+        modelId?: string;
+        modelLabel?: string;
+        providerLabel?: string;
+        latencyMs?: number;
+        usage?: { totalTokens?: number };
+        notice?: string;
+        changedPaths?: string[];
+      } | null;
+      if (!res.ok || !data?.ok) {
+        const detail = data && "error" in data && typeof data.error === "string" ? data.error : `Request failed (${res.status})`;
+        throw new Error(detail);
+      }
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-assistant-${Date.now()}`,
+          role: "assistant",
+          content: data.reply || "Done.",
+          mode: "build",
+          modelLabel: data.modelLabel ?? "",
+          providerLabel: data.providerLabel,
+          latencyMs: data.latencyMs,
+          tokens: data.usage?.totalTokens,
+          notice: data.notice,
+          changedCount: Array.isArray(data.changedPaths) ? data.changedPaths.length : undefined,
+          error: "",
+          createdAt: new Date().toISOString(),
+          changes: [],
+        },
+      ]);
+      setText("");
+      setPicked([]);
+      router.refresh();
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Send failed — your text is intact.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="flex min-w-0 flex-1 min-h-0 max-h-full" style={{ alignItems: "flex-start" }}>
@@ -135,41 +239,89 @@ export default function ProjectBuilder({
           </div>
         )}
         <div className="flex-1 min-h-0 space-y-3 overflow-y-auto p-4" aria-live="polite">
-          {initialMessages.length === 0 && (
+          {messages.length === 0 && !busy && (
             <div className="px-1 pt-10 text-center">
               <p className="text-[14px] font-semibold">Talk to your agent.</p>
-              <p className="muted mt-1 text-[13px]">The composer is being rebuilt — history below is read-only.</p>
+              <p className="muted mt-1 text-[13px]">
+                Attach a screenshot, clip, or document — the request carries it to the model.
+              </p>
             </div>
           )}
-          {initialMessages.map((m) => (
-            <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-              <div
-                className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed"
-                style={
-                  m.role === "user"
-                    ? { background: "var(--bg)", color: "var(--ink)" }
-                    : { background: "var(--bg-inset)", color: "var(--ink)", boxShadow: "inset 0 0 0 1px var(--hairline)" }
-                }
-              >
-                {m.content}
+          {messages.map((m) => {
+            const latency = fmtLatency(m.latencyMs);
+            const meta = [m.modelLabel, m.providerLabel, latency, m.tokens !== undefined ? `${m.tokens} tok` : null]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <div key={m.id} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+                <div
+                  className="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed"
+                  style={
+                    m.role === "user"
+                      ? { background: "var(--bg)", color: "var(--ink)" }
+                      : { background: "var(--bg-inset)", color: "var(--ink)", boxShadow: "inset 0 0 0 1px var(--hairline)" }
+                  }
+                >
+                  {m.content}
+                  {meta && (
+                    <p className="mt-1 text-[11px]" style={{ color: "var(--ink-3)" }}>
+                      routed via {meta}
+                    </p>
+                  )}
+                  {m.notice && (
+                    <p className="mt-1 text-[11px]" style={{ color: "var(--warn)" }}>
+                      {m.notice}
+                    </p>
+                  )}
+                  {m.changedCount !== undefined && m.changedCount > 0 && (
+                    <RunDownloadLink projectId={projectId} changedCount={m.changedCount} />
+                  )}
+                </div>
               </div>
+            );
+          })}
+          {busy && (
+            <div className="flex justify-start">
+              <p className="text-[13px]" style={{ color: "var(--ink-3)" }} aria-live="polite">
+                Working…
+              </p>
             </div>
-          ))}
+          )}
         </div>
-        <form className="shrink-0 p-3 pt-1" onSubmit={(e) => e.preventDefault()}>
+        <form className="shrink-0 p-3 pt-1" onSubmit={(e) => void send(e)}>
           <div
             className="rounded-2xl p-3"
             style={{ background: "var(--bg-raised)", boxShadow: "inset 0 0 0 1px var(--hairline)" }}
           >
-            <label htmlFor="chat-prompt-stub" className="sr-only">Message the agent</label>
+            <AttachmentPicker value={picked} onChange={setPicked} />
+            <label htmlFor="chat-prompt" className="sr-only">Message the agent</label>
             <textarea
-              id="chat-prompt-stub"
-              className="w-full resize-none bg-transparent px-1 py-1 text-[15px] outline-none"
+              id="chat-prompt"
+              className="mt-1 w-full resize-none bg-transparent px-1 py-1 text-[15px] outline-none"
               style={{ color: "var(--ink)" }}
-              placeholder="Composer returning soon…"
+              placeholder="Message the agent — Enter to send, Shift+Enter for a new line"
               rows={2}
-              disabled
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                }
+              }}
+              disabled={busy}
             />
+            <div className="mt-1 flex items-center gap-2 px-1">
+              <ModelPicker value={modelId} onChange={setModelId} readiness={readiness} />
+              <button type="submit" className="btn btn-primary btn-sm ml-auto" disabled={busy || (!text.trim() && picked.filter((p) => !p.error).length === 0)}>
+                {busy ? "Sending…" : "Send"}
+              </button>
+            </div>
+            {sendError && (
+              <p role="alert" className="mt-1 px-1 text-[13px]" style={{ color: "var(--accent)" }}>
+                {sendError}
+              </p>
+            )}
           </div>
         </form>
       </aside>
