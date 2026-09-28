@@ -1,6 +1,6 @@
 import { freeModels, PROVIDER_META, type ModelDef, type ProviderId } from "./models";
 import { resolveProviderAccess, type ProviderAccess } from "./engine";
-import { providerErrorText, refusalMessage } from "./agent/llm";
+import { creditUpsellHint, providerErrorText, refusalMessage } from "./agent/llm";
 
 /**
  * Readiness: is a free model actually able to answer right now?
@@ -48,7 +48,30 @@ export interface ModelReadiness {
   catalogSize?: number;
   /** Configured id absent from a catalog that did load — a likely rotation. */
   notInCatalog?: boolean;
+  /** The one control that fixes this row, when it can be fixed from the app:
+   *  keys and credits. A row that cannot run must never be a dead end, so an
+   *  unrunnable state carries the action that gets it running. */
+  action?: { label: string; href: string };
   checkedAt: number;
+}
+
+const KEYS_ACTION = { label: "Add key", href: "/agent/settings#keys" } as const;
+
+/** The control for a state, if the app can do anything about it. */
+export function readinessAction(
+  status: ReadinessStatus,
+  detail = "",
+): { label: string; href: string } | undefined {
+  if (status === "no_key" || status === "rejected") return KEYS_ACTION;
+  if (status === "model_missing") return { label: "Open settings", href: "/agent/settings" };
+  if (status === "rate_limited" && creditUpsellHint(detail)) {
+    const match = detail.match(/add\s+(\d+)\s+credits?/i);
+    const credits = match ? Number(match[1]) : 0;
+    return credits > 0
+      ? { label: `Add ${credits} credit${credits === 1 ? "" : "s"}`, href: "/agent/settings#credits" }
+      : { label: "Add credits", href: "/agent/settings#credits" };
+  }
+  return undefined;
 }
 
 /** A provider that hangs must not hold a page render: bounded, then reported. */
@@ -117,6 +140,7 @@ export async function checkModelReadiness(userId: string, model: ModelDef): Prom
       model: model.model,
       source: "none",
       status: "no_key",
+      action: readinessAction("no_key"),
       message:
         resolved.kind === "missing_key"
           ? resolved.problem
@@ -136,10 +160,12 @@ export async function checkModelReadiness(userId: string, model: ModelDef): Prom
   // 1. Best-effort catalog: proves the key works and whether our id is offered.
   const listed = await listModels(access);
   if (!("unsupported" in listed) && !listed.ok) {
+    const status: ReadinessStatus = listed.status === 429 ? "rate_limited" : listed.status >= 500 ? "unreachable" : "rejected";
     return {
       ...common,
-      status: listed.status === 429 ? "rate_limited" : listed.status >= 500 ? "unreachable" : "rejected",
+      status,
       message: refusalMessage(listed.status, listed.detail, access),
+      ...(readinessAction(status, listed.detail) ? { action: readinessAction(status, listed.detail) } : {}),
     };
   }
   const catalogSize = !("unsupported" in listed) && listed.ok ? listed.ids.length : undefined;
@@ -179,6 +205,7 @@ export async function checkModelReadiness(userId: string, model: ModelDef): Prom
       ...common,
       status,
       message: refusalMessage(res.status, detail, access),
+      ...(readinessAction(status, detail) ? { action: readinessAction(status, detail) } : {}),
       ...(catalogSize === undefined ? {} : { catalogSize }),
       ...(notInCatalog === undefined ? {} : { notInCatalog }),
     };

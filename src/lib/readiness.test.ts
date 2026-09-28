@@ -166,6 +166,39 @@ describe("model readiness", () => {
     expect(result.message).not.toContain("Settings → API keys"); // it is not a key problem
   });
 
+  it("turns a free-quota upsell into the exact action the provider asked for", async () => {
+    // OpenRouter's real 429 body names the fix. Surfacing it verbatim, with an
+    // "Add 10 credits" control, is the difference between a dead end and a way out.
+    stubReplies({
+      list: CATALOG,
+      complete: {
+        status: 429,
+        body: {
+          error: {
+            message:
+              "Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day",
+          },
+        },
+      },
+    });
+    const result = await checkModelReadiness("u1", GEM);
+
+    expect(result.status).toBe("rate_limited");
+    expect(result.message).toContain(
+      "Add 10 credits to unlock 1000 free model requests per day",
+    );
+    expect(result.message).not.toContain("wait a moment and retry");
+    expect(result.action).toEqual({ label: "Add 10 credits", href: "/agent/settings#credits" });
+  });
+
+  it("carries the Add-key control when a model is not set up yet", async () => {
+    delete process.env.GEMINI_API_KEY;
+    const result = await checkModelReadiness("u1", GEM);
+
+    expect(result.status).toBe("no_key");
+    expect(result.action).toEqual({ label: "Add key", href: "/agent/settings#keys" });
+  });
+
   it("says no key without touching the network when nothing is configured", async () => {
     delete process.env.GEMINI_API_KEY;
     seen = [];

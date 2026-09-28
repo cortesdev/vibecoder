@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { MODELS, PROVIDER_META, type ModelDef } from "@/lib/models";
 import type { ModelReadiness, ReadinessStatus } from "@/lib/readiness";
+import { effectiveStatement, resolveEffectiveModel, rowKind } from "@/lib/model-selection";
 
 // The picker never re-asks the provider after the server render, so its
 // readiness would go stale — a model that was rate-limited at page load stays
@@ -15,10 +16,14 @@ const REFRESH_MS = 60_000;
 // Model dropdown modeled on the OpenCode picker: Free badges on free models,
 // credit cost on hosted ones, provider footer.
 //
-// Free models also carry their readiness: whether that model can actually
-// answer right now, checked against the provider itself. A "Free" badge on its
-// own promises something the app may not be able to deliver, so the state and
-// the provider's own words are shown before a prompt is ever typed.
+// Three states, never one blanket "disabled":
+//   runnable            -> enabled.
+//   not set up yet      -> cannot run, but carries the control that fixes it
+//                          ("Add key" / "Add credits") — never a dead end.
+//   temporarily down    -> the real countdown plus "Try anyway", and the model
+//                          the free chain would fall back to.
+// The chip and the menu footer say which model will actually run, so the free
+// chain never substitutes silently.
 
 export function useOutsideClose(onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -45,7 +50,7 @@ export function useLiveReadiness(initial: ModelReadiness[]) {
   const inFlight = useRef(false);
 
   async function refresh() {
-    if (inFlight.current || !navigator.onLine) return;
+    if (inFlight.current || (typeof navigator !== "undefined" && !navigator.onLine)) return;
     inFlight.current = true;
     try {
       const res = await fetch("/api/app/keys?refresh=1");
@@ -116,6 +121,24 @@ export function readinessColor(status: ReadinessStatus | undefined): string {
   return "var(--warn)";
 }
 
+/** The working control a "not set up yet" row carries. Falls back to a
+ *  sensible action when the server did not attach one. */
+export function setupAction(
+  state: ModelReadiness | undefined,
+): { label: string; href: string } | undefined {
+  if (!state) return undefined;
+  if (state.action) return state.action;
+  switch (state.status) {
+    case "no_key":
+    case "rejected":
+      return { label: "Add key", href: "/agent/settings#keys" };
+    case "model_missing":
+      return { label: "Open settings", href: "/agent/settings" };
+    default:
+      return undefined;
+  }
+}
+
 function readinessOf(
   states: Record<string, ModelReadiness>,
   id: string,
@@ -129,18 +152,22 @@ export default function ModelPicker({
   balance = 0,
   align = "left",
   readiness = [],
+  secondsLeft = REFRESH_MS / 1000,
 }: {
   value: string;
   onChange: (id: string) => void;
   balance?: number;
   align?: "left" | "right";
   readiness?: ModelReadiness[];
+  /** Seconds until the next readiness probe; supplied by the caller's
+   *  useLiveReadiness so the picker and the composer share one countdown. */
+  secondsLeft?: number;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useOutsideClose(() => setOpen(false));
   const current = MODELS.find((m) => m.id === value) ?? MODELS[0];
 
-  const { readiness: live, secondsLeft } = useLiveReadiness(readiness);
+  const live = readiness;
   const states = Object.fromEntries(live.map((r) => [r.modelId, r]));
   const free = MODELS.filter((m) => m.tier === "free");
   const paid = MODELS.filter((m) => m.tier === "credits");
@@ -154,16 +181,15 @@ export default function ModelPicker({
   const liveFree = free.filter((m) => states[m.id]?.status === "live");
   const readyCount = liveFree.length;
 
-  /** A free model that can't answer right now is still listed (so the user
-   *  sees it), but grayed out and unclickable: picking it would only fail and
-   *  burn a fallback attempt. "limit reached" and "unreachable" recover on
-   *  their own, so they carry the seconds until the next probe instead of a
-   *  dead "needs key" style silence. */
-  function rowOverlay(state: ModelReadiness | undefined) {
-    const s = state?.status;
-    if (s === "live" || !state) return null;
-    const renews = s === "rate_limited" || s === "unreachable";
-    return { disabled: true, hint: renews ? `retry in ${secondsLeft}s` : readinessLabel(s) ?? "offline" };
+  const effective = resolveEffectiveModel(value, live, balance);
+  const statement = effectiveStatement(effective);
+  const currentSetupAction = setupAction(currentState);
+  const currentTemporary =
+    rowKind(currentStatus) === "temporary" && current.tier === "free";
+
+  function choose(id: string) {
+    onChange(id);
+    setOpen(false);
   }
 
   return (
@@ -174,7 +200,7 @@ export default function ModelPicker({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-haspopup="listbox"
-        title={currentState?.message}
+        title={[currentState?.message, statement].filter(Boolean).join(" — ")}
       >
         {currentState && (
           <span
@@ -187,6 +213,16 @@ export default function ModelPicker({
         {currentLabel && (
           <span className="text-[11px]" style={{ color: readinessColor(currentState?.status) }}>
             {currentLabel}
+          </span>
+        )}
+        {effective.substituted && (
+          <span className="text-[10.5px]" style={{ color: "var(--ink-3)" }}>
+            · Will run: {effective.label}
+          </span>
+        )}
+        {!effective.substituted && effective.reason === "unavailable" && effective.fallbackLabel && (
+          <span className="text-[10.5px]" style={{ color: "var(--ink-3)" }}>
+            · falls back to {effective.fallbackLabel}
           </span>
         )}
         <ChevronDown size={13} aria-hidden="true" />
@@ -207,68 +243,108 @@ export default function ModelPicker({
           </p>
           {free.map((m) => {
             const state = readinessOf(states, m.id);
-            const overlay = rowOverlay(state);
-            const label = overlay?.hint ?? readinessLabel(state?.status);
+            const kind = rowKind(state?.status);
+            const label =
+              kind === "temporary"
+                ? `try anyway · retry in ${secondsLeft}s`
+                : readinessLabel(state?.status);
+            const action = kind === "setup" ? setupAction(state) : undefined;
             return (
-              <button
-                key={m.id}
-                type="button"
-                role="option"
-                aria-selected={m.id === value}
-                className="menu-item"
-                title={state?.message}
-                disabled={overlay?.disabled}
-                onClick={() => {
-                  onChange(m.id);
-                  setOpen(false);
-                }}
-              >
-                {state && (
+              <div key={m.id} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={m.id === value}
+                  className="menu-item flex-1"
+                  title={state?.message}
+                  disabled={kind !== "runnable"}
+                  onClick={() => choose(m.id)}
+                >
+                  {state && (
+                    <span
+                      aria-hidden="true"
+                      className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ background: readinessColor(state.status) }}
+                    />
+                  )}
                   <span
-                    aria-hidden="true"
-                    className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ background: readinessColor(state.status) }}
-                  />
-                )}
-                <span className="flex-1" style={overlay ? { opacity: 0.45 } : undefined}>
-                  {m.label}
-                </span>
-                {label && (
-                  <span className="text-[11px]" style={{ color: readinessColor(state?.status) }}>
-                    {label}
+                    className="flex-1"
+                    style={kind !== "runnable" ? { opacity: 0.45 } : undefined}
+                  >
+                    {m.label}
                   </span>
+                  {label && (
+                    <span className="text-[11px]" style={{ color: readinessColor(state?.status) }}>
+                      {label}
+                    </span>
+                  )}
+                  <ModelBadge tier={m.tier} cost={m.cost} />
+                  {kind === "runnable" && m.id === value && (
+                    <Check size={14} aria-hidden="true" style={{ color: "var(--good)" }} />
+                  )}
+                </button>
+                {action && (
+                  <a
+                    href={action.href}
+                    className="btn btn-secondary btn-sm shrink-0"
+                    onClick={() => setOpen(false)}
+                  >
+                    {action.label}
+                  </a>
                 )}
-                <ModelBadge tier={m.tier} cost={m.cost} />
-                {!overlay && m.id === value && <Check size={14} aria-hidden="true" style={{ color: "var(--good)" }} />}
-              </button>
+                {kind === "temporary" && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm shrink-0"
+                    onClick={() => choose(m.id)}
+                  >
+                    Try anyway
+                  </button>
+                )}
+              </div>
             );
           })}
 
           <p className="px-2 pb-1 pt-3 text-[12px]" style={{ color: "var(--ink-3)" }}>
             Hosted — billed from credits ({balance} left)
           </p>
-          {paid.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              role="option"
-              aria-selected={m.id === value}
-              className="menu-item"
-              onClick={() => {
-                onChange(m.id);
-                setOpen(false);
-              }}
-            >
-              <span className="flex-1">{m.label}</span>
-              <ModelBadge tier={m.tier} cost={m.cost} />
-              {balance < m.cost && (
-                <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
-                  low
-                </span>
-              )}
-              {m.id === value && <Check size={14} aria-hidden="true" style={{ color: "var(--good)" }} />}
-            </button>
-          ))}
+          {paid.map((m) => {
+            const short = balance < m.cost;
+            return (
+              <div key={m.id} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={m.id === value}
+                  className="menu-item flex-1"
+                  disabled={short}
+                  onClick={() => choose(m.id)}
+                >
+                  <span className="flex-1" style={short ? { opacity: 0.45 } : undefined}>
+                    {m.label}
+                  </span>
+                  <ModelBadge tier={m.tier} cost={m.cost} />
+                  {short && (
+                    <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
+                      0 cr
+                    </span>
+                  )}
+                  {!short && m.id === value && (
+                    <Check size={14} aria-hidden="true" style={{ color: "var(--good)" }} />
+                  )}
+                </button>
+                {short && (
+                  <a
+                    href="/agent/settings#credits"
+                    className="btn btn-secondary btn-sm shrink-0"
+                    onClick={() => setOpen(false)}
+                  >
+                    Add credits
+                  </a>
+                )}
+              </div>
+            );
+          })}
 
           <p className="px-2 pb-2 pt-3 text-[11.5px] leading-relaxed" style={{ color: "var(--ink-3)" }}>
             {PROVIDER_META[current.provider].label} · {current.note}
@@ -280,6 +356,29 @@ export default function ModelPicker({
               data-readiness={currentState.status}
             >
               {currentState.message}
+            </p>
+          )}
+          {currentSetupAction && (
+            <p className="px-2 pb-2">
+              <a
+                href={currentSetupAction.href}
+                className="btn btn-secondary btn-sm"
+                onClick={() => setOpen(false)}
+              >
+                {currentSetupAction.label}
+              </a>
+            </p>
+          )}
+          {currentTemporary && (
+            <p className="flex items-center gap-2 px-2 pb-2">
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => choose(current.id)}>
+                Try anyway
+              </button>
+              {effective.fallbackLabel && (
+                <span className="text-[11.5px]" style={{ color: "var(--ink-3)" }}>
+                  Will run: {effective.fallbackLabel} if it fails
+                </span>
+              )}
             </p>
           )}
         </div>

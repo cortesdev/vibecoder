@@ -200,8 +200,31 @@ export function providerErrorText(body: string): string {
   return trimmed.replace(/\s+/g, " ").slice(0, 200);
 }
 
-/** The one thing the reader can do about this status. */
-export function fixHintFor(status: number, config: Pick<LlmConfig, "providerLabel" | "keyEnv" | "modelId" | "baseUrl">): string {
+const CREDIT_UPSELL = /add\s+(\d+)\s+credits?/i;
+
+/**
+ * A 429 whose body is a paid upsell (OpenRouter's "Rate limit exceeded:
+ * free-models-per-day. Add 10 credits to unlock 1000 free model requests per
+ * day") is not something "waiting a moment" fixes. When the provider itself
+ * names a credit amount, quote that amount back as the action instead of the
+ * generic retry advice — the user can actually do it.
+ */
+export function creditUpsellHint(detail: string): string | undefined {
+  const match = detail.match(CREDIT_UPSELL);
+  if (!match) return undefined;
+  const credits = Number(match[1]);
+  if (!Number.isFinite(credits) || credits <= 0) return undefined;
+  return `Add ${credits} credit${credits === 1 ? "" : "s"} in Settings → Credits to lift this free-model limit right away (the provider's own words: "${detail.trim()}").`;
+}
+
+/** The one thing the reader can do about this status. `detail` is the
+ *  provider's own message where one was read, so a paid upsell can be turned
+ *  into the exact action it asks for. */
+export function fixHintFor(
+  status: number,
+  config: Pick<LlmConfig, "providerLabel" | "keyEnv" | "modelId" | "baseUrl">,
+  detail = "",
+): string {
   const who = config.providerLabel ?? "the provider";
   const env = config.keyEnv?.length ? config.keyEnv.join(" or ") : "the provider's API key variable";
   if (status === 401 || status === 403) {
@@ -217,6 +240,8 @@ export function fixHintFor(status: number, config: Pick<LlmConfig, "providerLabe
     return `${who} does not serve this model id. Set ${envNameFor(config.modelId)} to the id from ${who}'s console — no deploy needed.`;
   }
   if (status === 429) {
+    const upsell = creditUpsellHint(detail);
+    if (upsell) return upsell;
     return `${who} is rate limiting this key or its free quota is spent — wait a moment and retry.`;
   }
   if (status >= 500) {
@@ -238,7 +263,7 @@ export function refusalMessage(
 ): string {
   const who = config.providerLabel ?? "the provider";
   const what = config.modelId ? `the "${config.modelId}" model` : "this model";
-  return `${who} refused ${what} — HTTP ${status}${detail ? `, provider said: "${detail}"` : ""}. ${fixHintFor(status, config)}`;
+  return `${who} refused ${what} — HTTP ${status}${detail ? `, provider said: "${detail}"` : ""}. ${fixHintFor(status, config, detail)}`;
 }
 
 async function httpError(res: Response, config: LlmConfig): Promise<Error> {

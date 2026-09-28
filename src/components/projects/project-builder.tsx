@@ -9,9 +9,10 @@ import EditorPanel from "./editor-panel";
 import IntegrationsPanel from "./integrations-panel";
 import type { IntegrationService } from "@/lib/integrations";
 import AttachmentPicker, { type PickedFile } from "./attachment-picker";
-import ModelPicker from "@/components/app/model-picker";
+import ModelPicker, { useLiveReadiness } from "@/components/app/model-picker";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
 import { downscaleImage } from "@/lib/attachments/client";
+import { effectiveStatement, resolveEffectiveModel } from "@/lib/model-selection";
 import type { ModelReadiness } from "@/lib/readiness";
 
 // Rebuilding workspace (vaibcode-V2). Chat sends text + attachments as
@@ -34,6 +35,7 @@ export default function ProjectBuilder({
   initialModelId,
   initialPresetId = null,
   readiness = [],
+  balance = 0,
   integrations = [],
   integrationCounts = {},
 }: {
@@ -47,6 +49,7 @@ export default function ProjectBuilder({
   initialModelId?: string;
   initialPresetId?: string | null;
   readiness?: ModelReadiness[];
+  balance?: number;
   integrations?: IntegrationService[];
   integrationCounts?: Record<string, number>;
 }) {
@@ -87,6 +90,10 @@ export default function ProjectBuilder({
   const [modelId, setModelId] = useState(
     initialModelId && initialModelId.trim() ? initialModelId : DEFAULT_MODEL_ID,
   );
+  // One live readiness snapshot for the picker and the send row, so both agree
+  // on which model will actually run and neither substitutes silently.
+  const { readiness: liveReadiness, secondsLeft } = useLiveReadiness(readiness);
+  const effectiveNote = effectiveStatement(resolveEffectiveModel(modelId, liveReadiness, balance));
   const [busy, setBusy] = useState(false);
   const [sendError, setSendError] = useState("");
   const router = useRouter();
@@ -335,11 +342,27 @@ export default function ProjectBuilder({
               disabled={busy}
             />
             <div className="mt-1 flex items-center gap-2 px-1">
-              <ModelPicker value={modelId} onChange={setModelId} readiness={readiness} />
+              <ModelPicker
+                value={modelId}
+                onChange={setModelId}
+                readiness={liveReadiness}
+                secondsLeft={secondsLeft}
+                balance={balance}
+              />
               <button type="submit" className="btn btn-primary btn-sm ml-auto" disabled={busy || (!text.trim() && picked.filter((p) => !p.error).length === 0)}>
                 {busy ? "Sending…" : "Send"}
               </button>
             </div>
+            {effectiveNote && (
+              <p
+                className="mt-1 px-1 text-[11.5px]"
+                style={{ color: "var(--warn)" }}
+                data-testid="effective-model"
+                aria-live="polite"
+              >
+                {effectiveNote}
+              </p>
+            )}
             {sendError && (
               <p role="alert" className="mt-1 px-1 text-[13px]" style={{ color: "var(--accent)" }}>
                 {sendError}

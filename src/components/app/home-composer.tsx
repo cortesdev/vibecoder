@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Send } from "lucide-react";
-import ModelPicker from "./model-picker";
+import ModelPicker, { useLiveReadiness } from "./model-picker";
 import AttachmentPicker, { type PickedFile } from "@/components/projects/attachment-picker";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
 import { resolveTemplate } from "@/lib/templates/catalog";
 import { downscaleImage } from "@/lib/attachments/client";
+import { effectiveStatement, resolveEffectiveModel } from "@/lib/model-selection";
 import type { ModelReadiness } from "@/lib/readiness";
 
 // Home chat composer: type a message, hit Enter, and it creates the project
@@ -24,10 +25,12 @@ function nameFromPrompt(prompt: string): string {
 
 export default function HomeComposer({
   readiness = [],
+  balance = 0,
   initialPrompt = "",
   initialTemplate = "",
 }: {
   readiness?: ModelReadiness[];
+  balance?: number;
   initialPrompt?: string;
   initialTemplate?: string;
 }) {
@@ -40,6 +43,8 @@ export default function HomeComposer({
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [attachments, setAttachments] = useState<PickedFile[]>([]);
+  const { readiness: liveReadiness, secondsLeft } = useLiveReadiness(readiness);
+  const effectiveNote = effectiveStatement(resolveEffectiveModel(modelId, liveReadiness, balance));
 
   async function submit() {
     const text = prompt.trim();
@@ -132,7 +137,13 @@ export default function HomeComposer({
               </button>
             ))}
           </div>
-          <ModelPicker value={modelId} onChange={setModelId} readiness={readiness} />
+          <ModelPicker
+            value={modelId}
+            onChange={setModelId}
+            readiness={liveReadiness}
+            secondsLeft={secondsLeft}
+            balance={balance}
+          />
           <button
             type="button"
             className="btn btn-primary ml-auto flex h-9 w-9 items-center justify-center !p-0"
@@ -143,6 +154,11 @@ export default function HomeComposer({
             <Send size={15} aria-hidden="true" />
           </button>
         </div>
+        {effectiveNote && (
+          <p className="mt-1 px-1 text-[11.5px]" style={{ color: "var(--warn)" }} data-testid="effective-model">
+            {effectiveNote}
+          </p>
+        )}
       </div>
 
       <p

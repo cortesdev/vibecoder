@@ -148,7 +148,7 @@ export default function SettingsClient({
   return (
     <div className="mt-8 flex flex-col gap-8">
       {/* API keys */}
-      <section aria-labelledby="keys-h">
+      <section id="keys" aria-labelledby="keys-h">
         <h2 id="keys-h" className="text-[17px] font-semibold">
           API keys
         </h2>
@@ -262,7 +262,7 @@ export default function SettingsClient({
       </section>
 
       {/* Credits */}
-      <section aria-labelledby="credits-h">
+      <section id="credits" aria-labelledby="credits-h">
         <h2 id="credits-h" className="text-[17px] font-semibold">
           Credits
         </h2>

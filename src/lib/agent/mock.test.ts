@@ -23,6 +23,18 @@ describe("MockAgent", () => {
     expect(result.edits[0].after).toContain("Keep the current behavior");
   });
 
+  it("answers a plain hello with edits, never a plan-approval payload", async () => {
+    const agent = new MockAgent();
+    const result = await agent.run("hello", { "src/App.tsx": "x" });
+    // "hello" must build, not open a review gate.
+    expect(result.edits.length).toBeGreaterThan(0);
+    expect(result.plan).toBeUndefined();
+    expect(result.suggestions).toBeUndefined();
+    expect(result).not.toHaveProperty("pendingPlan");
+    expect(result).not.toHaveProperty("approval");
+    expect(result).not.toHaveProperty("requiresApproval");
+  });
+
   it("creates src/App.tsx when the project is empty", async () => {
     const agent = new MockAgent();
     const { edits } = await agent.run("hello", {});

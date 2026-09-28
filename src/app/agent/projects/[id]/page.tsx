@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { findOwnedProject, listServiceKeys } from "@/lib/projects";
 import { currentUser } from "@/lib/auth";
+import { ensureWallet, getBalance } from "@/lib/credits";
 import { checkFreeReadiness } from "@/lib/readiness";
 import { INTEGRATIONS } from "@/lib/integrations";
 import ProjectBuilder, { type ChatMessageDto } from "@/components/projects/project-builder";
@@ -26,10 +27,11 @@ export default async function ProjectPage({
   const user = await currentUser();
   if (!user) notFound();
 
-  const [project, readiness, integrationCounts] = await Promise.all([
+  const [project, readiness, integrationCounts, balance] = await Promise.all([
     findOwnedProject(user.id, id),
     checkFreeReadiness(user.id),
     listServiceKeys(user.id),
+    ensureWallet(user.id).then(() => getBalance(user.id)),
   ]);
   if (!project) notFound();
 
@@ -64,6 +66,8 @@ export default async function ProjectPage({
       attachments?: unknown;
       exportUrl?: unknown;
       changedPaths?: unknown;
+      modelId?: unknown;
+      modelLabel?: unknown;
       providerLabel?: unknown;
       latencyMs?: unknown;
       tokens?: unknown;
@@ -83,7 +87,9 @@ export default async function ProjectPage({
       role: r.role === "assistant" ? "assistant" : "user",
       content: r.content,
       mode: r.mode,
-      modelLabel: r.modelLabel,
+      // The persisted run metadata carries the effective model, so a reload
+      // shows what actually ran even when the free chain substituted.
+      modelLabel: typeof meta.modelLabel === "string" ? meta.modelLabel : r.modelLabel,
       error: r.error,
       createdAt: r.createdAt.toISOString(),
       providerLabel: typeof meta.providerLabel === "string" ? meta.providerLabel : undefined,
@@ -130,6 +136,7 @@ export default async function ProjectPage({
         initialModelId={initialModelId}
         initialPresetId={project.activePresetId}
         readiness={readiness}
+        balance={balance}
         integrations={INTEGRATIONS}
         integrationCounts={integrationCounts}
       />

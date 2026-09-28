@@ -304,6 +304,8 @@ export async function runPrompt(
     // Pure conversational turn: no code changed, the answer is the result.
     await db.prompt.create({ data: { projectId, content: trimmed, role: "user", mode } });
     const convoMeta = historyMetadata({
+      modelId: outcome.modelId,
+      modelLabel: outcome.modelLabel,
       providerLabel: outcome.providerLabel,
       latencyMs: outcome.latencyMs,
       tokens: outcome.usage?.totalTokens,
@@ -404,6 +406,8 @@ export async function runPrompt(
       ? `Done — updated ${applied.join(", ")}.`
       : "All set — no file changes were needed.");
   const appliedMeta = historyMetadata({
+    modelId: outcome.modelId,
+    modelLabel: outcome.modelLabel,
     providerLabel: outcome.providerLabel,
     latencyMs: outcome.latencyMs,
     tokens: outcome.usage?.totalTokens,

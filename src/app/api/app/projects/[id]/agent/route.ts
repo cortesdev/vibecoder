@@ -114,6 +114,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   }
   return Response.json({
     ok: true,
+    // The outcome's own status: "completed" only after persisted, validated
+    // edits (never HTTP 200 alone). There is no plan/approval payload to see
+    // here and no plan-approval field, so a client cannot render a plan gate.
+    status: result.status,
     reply: result.reply,
     modelId: result.modelId,
     modelLabel: result.modelLabel,
