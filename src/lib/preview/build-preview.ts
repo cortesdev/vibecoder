@@ -128,7 +128,10 @@ export async function bundleJs(esbuild: EsbuildLike, files: Files, entry?: strin
       // An output path is required even for in-memory builds: without it a
       // CSS import has nowhere to go and the whole bundle fails.
       outfile: "bundle.js",
-      format: "iife",
+      // ESM, not IIFE: bare React specs are externalized to absolute CDN URLs,
+      // and only <script type="module"> can import absolute URLs at runtime.
+      // (IIFE would emit require("https://…") calls that throw in browsers.)
+      format: "esm",
       jsx: "automatic",
       loader: { ".tsx": "tsx", ".ts": "ts", ".jsx": "jsx", ".js": "js", ".css": "css", ".json": "json" },
       absWorkingDir: "/",
@@ -149,11 +152,12 @@ export function escapeHtml(value: string): string {
 
 /** Restrictive preview CSP: no plugins/frames/objects, scripts only inline
  *  (our bundle) or https (the React CDN), no parent/cookie access. The
- *  sandboxed iframe (no allow-same-origin) enforces the rest. */
+ *  sandboxed iframe (no allow-same-origin) enforces the rest. frame-ancestors
+ *  is deliberately absent: it is ignored in <meta> and only logs noise. */
 export const PREVIEW_CSP =
   "default-src 'none'; script-src 'unsafe-inline' https:; style-src 'unsafe-inline' https:; " +
   "img-src data: https: blob:; media-src data: https: blob:; font-src https: data:; connect-src https: wss:; " +
-  "frame-ancestors 'none'; base-uri 'none'; form-action 'none';";
+  "base-uri 'none'; form-action 'none';";
 
 const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">`;
 
@@ -169,11 +173,12 @@ export function assembleHtml(files: Files, js: string): string {
     ? html
     : html.replace(/<head[^>]*>/i, (m) => `${m}\n${CSP_META}`);
   const stripped = withCsp.replace(/<script\b[^>]*type="module"[^>]*src="[^"]*"[^>]*><\/script>/gi, "");
+  const injected = `${BUNDLED_MARKER}<script type="module">\n${js}\n</script>`;
   if (stripped === withCsp && !/<script[^>]*>/i.test(withCsp)) {
-    return stripped.replace("</body>", `${BUNDLED_MARKER}<script>\n${js}\n</script></body>`);
+    return stripped.replace("</body>", `${injected}</body>`);
   }
   if (!stripped.includes(BUNDLED_MARKER) && /<\/body>/i.test(stripped)) {
-    return stripped.replace(/<\/body>/i, `${BUNDLED_MARKER}<script>\n${js}\n</script></body>`);
+    return stripped.replace(/<\/body>/i, `${injected}</body>`);
   }
   return stripped;
 }

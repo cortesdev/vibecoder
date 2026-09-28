@@ -63,6 +63,7 @@ export default function HomeComposer({
       // until the server answers.
       const form = new FormData();
       form.set("message", text);
+      form.set("mode", mode.toLowerCase());
       if (modelId) form.set("modelId", modelId);
       for (const p of valid) {
         let blob: Blob = p.file;

@@ -132,10 +132,10 @@ describe("LlmAgent.run", () => {
 describe("LlmAgent.plan", () => {
   const options = { skills: DEFAULT_SKILLS.map(toSkillSummary) };
 
-  it("returns an editable plan with exactly three suggestions and valid skills", async () => {
+  it("returns a build-first plan with given suggestions and valid skills", async () => {
     const fetcher = fetchReply(JSON.stringify({
       plan: "Approach: Keep the change small\\nPlan: Update the component\\nRisks: Check the layout",
-      reply: "Please review this plan.",
+      reply: "Building now.",
       suggestions: ["Which state is required?", "What should be tested?", "Any visual constraints?"],
       skillIds: ["test-driven-development", "unknown-skill"],
     }));
@@ -150,16 +150,31 @@ describe("LlmAgent.plan", () => {
     vi.unstubAllGlobals();
   });
 
-  it("fills missing suggestions and honors pinned skill ids", async () => {
+  it("leaves suggestions empty unless there is a true blocker, and honors pinned skill ids", async () => {
     vi.stubGlobal("fetch", fetchReply(JSON.stringify({
       plan: "Approach: Verify first\\nPlan: Change one file\\nRisks: None known",
+      reply: "Building now.",
       suggestions: ["Only one suggestion"],
       skillIds: ["test-driven-development"],
     })));
     const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
     const result = await agent.plan("change it", {}, { ...options, pinnedSkillIds: ["security-and-hardening"] });
-    expect(result.suggestions).toHaveLength(3);
+    expect(result.suggestions).toEqual(["Only one suggestion"]);
     expect(result.skillIds).toEqual(["security-and-hardening"]);
+    vi.unstubAllGlobals();
+  });
+
+  it("allows empty suggestions — no upfront review gate", async () => {
+    vi.stubGlobal("fetch", fetchReply(JSON.stringify({
+      plan: "Approach: Build directly\\nPlan: Change one file\\nRisks: None known",
+      reply: "Building now.",
+      suggestions: [],
+      skillIds: ["context-engineering"],
+    })));
+    const agent = new LlmAgent({ apiKey: "k", baseUrl: "https://x/v1", model: "m" });
+    const result = await agent.plan("change it", {}, options);
+    expect(result.suggestions).toEqual([]);
+    expect(result.reply).not.toMatch(/review/i);
     vi.unstubAllGlobals();
   });
 

@@ -60,3 +60,7 @@ next-env.d.ts
 # nested repo folder (user-local)
 vibecoder/
 .claude
+
+# playwright e2e artifacts
+test-results/
+playwright-report/

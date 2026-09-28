@@ -28,6 +28,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const message = typeof rawMessage === "string" ? rawMessage.trim().slice(0, 4000) : "";
   const rawModel = form.get("modelId");
   const modelId = typeof rawModel === "string" && rawModel ? rawModel : undefined;
+  const rawMode = form.get("mode");
+  const mode = rawMode === "plan" || rawMode === "mission" || rawMode === "skills" ? rawMode : "build";
   const uploads = form.getAll("attachments").filter((v): v is File => v instanceof File);
   if (!message && uploads.length === 0) {
     return Response.json({ ok: false, error: "Prompt is empty." }, { status: 400 });
@@ -90,7 +92,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const metadata = JSON.stringify({ attachments: described, exportUrl });
 
   const result = await measure("agent.turn", () =>
-    runPrompt(user.id, id, message || "(attachments only)", modelId, true, [], "build", undefined, {}, attachments, metadata),
+    runPrompt(user.id, id, message || "(attachments only)", modelId, true, [], mode, undefined, {}, attachments, metadata),
   );
   if (!result.ok) {
     return Response.json({ ok: false, error: result.error, notice: result.notice }, { status: 400 });

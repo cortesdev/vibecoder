@@ -10,13 +10,9 @@ export class MockAgent implements Agent {
   async plan(prompt: string, _files: Files, options: AgentPlanOptions) {
     return {
       edits: [],
-      plan: `Approach: Review the request and the existing project before changing code.\nPlan: Apply the smallest coherent change for: ${prompt}\nRisks: Verify behavior, accessibility, and regression coverage after the change.`,
-      reply: "Here is a small plan to review before I make changes.",
-      suggestions: [
-        "Which existing behavior must remain unchanged?",
-        "What should I verify first?",
-        "Are there constraints I should include?",
-      ],
+      plan: `Approach: Build directly from the request without an upfront review gate.\nPlan: Apply the smallest coherent change for: ${prompt}\nRisks: Only pause for a true blocker that needs the user's decision.`,
+      reply: "Building now — I'll only ask if a decision truly needs you.",
+      suggestions: [],
       skillIds: options.skills.slice(0, 3).map((skill) => skill.id),
     };
   }

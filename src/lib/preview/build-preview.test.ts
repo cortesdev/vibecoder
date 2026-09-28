@@ -38,6 +38,7 @@ describe("preview document assembly", () => {
     );
     expect(doc).toContain("vibecoder-bundled");
     expect(doc).toContain("console.log(1)");
+    expect(doc).toContain('<script type="module">');
     expect(doc).not.toContain('type="module" src=');
   });
 
@@ -53,7 +54,7 @@ describe("preview document assembly", () => {
     );
     expect(doc).toContain("Content-Security-Policy");
     expect(doc).toContain("script-src 'unsafe-inline' https:");
-    expect(doc).toContain("frame-ancestors 'none'");
+    expect(doc).not.toContain("frame-ancestors");
   });
 
   it("summarizes build failures readably", () => {

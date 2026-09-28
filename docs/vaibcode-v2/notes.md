@@ -135,3 +135,58 @@ assertion) + jsdom/undici worker errors in component tests.
 - Gates: tsc clean, eslint 0 errors (2 `<img>` warnings, static thumbs),
   build clean, templates 11/11 green; only pre-existing `openrouter-paid`
   failure in scope.
+
+## M5 — image + document attachments (complete)
+- `agent/types.ts`: `AgentAttachment` (image/videoFrames/document),
+  `AgentRequest`, `AgentRunResult` (+`changedPaths`, `success`,
+  `toRunResult`); attachments travel on `AgentRunContext`, one contract.
+- `attachments/server.ts`: magic-byte sniffing, 8 MiB/file (413 "8 MB per
+  file"), spoof rejection, inert-SVG-only, bounded text + truncation flag,
+  JSON/UTF-8 validation, PDF-as-container, request bounds (6 files/20 MiB).
+- `attachments/client.ts`: pre-read precheck, ext fallback, 2048px downscale
+  (browser-only, throws clearly elsewhere). `attachment-picker.tsx`: dialog,
+  paste, drag/drop, thumbs/badges, per-file errors.
+- `llm.ts userContentBlocks`: image_url (auto), labeled doc text, timestamped
+  low frames; text-only path byte-identical. MockAgent records the normalized
+  payload deterministically. 54/54 agent tests.
+- Route `POST .../[id]/agent` (multipart, typed JSON; 413/415 with
+  code/fileName/limitBytes; rejected bytes never reach the model; video →
+  actionable 415 via `unsupportedRunner`). 8 route tests.
+- `runPrompt` gained `agentAttachments` + `metadata` (attachment descriptions
+  + export URL persisted on assistant rows). Minimal working composer in the
+  shell (multipart send, routed-via footer, notices, RunDownloadLink, text
+  preserved on error) + HomeComposer two-step (create → first turn, no more
+  silently dropped attachments; mode now forwarded).
+- Live-model screenshot acceptance pending provider keys in the test env.
+
+## M6 — bounded video extraction (complete)
+- `attachments/video.ts`: 5s window, ≤4 frames, ≤768px, 20s budget, injected
+  `VideoRunner` (deterministic tests), raw video never forwarded, `stoppedBy`
+  reported. 5 tests.
+
+## M7 — variable presets + exact undo (complete)
+- `presets.ts`: 8 identities as CSS-var sets + thumb meta. `presets/apply.ts`:
+  delimited-section rewrite, byte-identical elsewhere, readable rejections.
+- `applyProjectPreset`/`undoProjectPreset`: persist `activePresetId`, undo
+  bytes on the chat message, refuse-after-edit, consume-once. Route
+  `POST .../presets` (apply/undo). `preset-panel.tsx` wired into shell.
+- 25/25 tests. Pixel/persist proof via e2e (apply → reload shows Current →
+  undo restores).
+
+## M8 — shares, gates, verification (complete)
+- `preview/share.ts` + tests, `POST/DELETE .../shares`, public `/p/[token]`
+  (uniform unavailable), share button copies link.
+- `instrument.ts`: duration/outcome/code events, never content; wired into
+  agent/export/preset routes + preview builds.
+- e2e (`playwright.config.ts` + `v2-flow.spec.ts`, isolated /tmp DB from
+  global-setup, scrubbed provider keys): picker, client zip rejection, error
+  path with intact text, preview renders starter, toolbar keyboard, export
+  download, preset persist + undo, **axe zero criticals**. GREEN.
+- Bug trail from e2e (all fixed): localhost↔127.0.0.1 origin split, Turso
+  scrub breaking DB, `Prompt` columns missing chain-wide (repair migration +
+  idempotent applier), IIFE+CDN runtime require (→ESM), tablist axe
+  violation, `file:` DB URL quirk, empty-string env quirk.
+- Full gates: tsc clean, eslint 0 errors, build clean, vitest 188 passed /
+  7 pre-existing failures, Playwright 1/1.
+- Deferred honestly: live-model attachment proof (needs keys), load testing
+  (budgets set, not measured), plan/apply flows (`planPrompt` etc. reserved).

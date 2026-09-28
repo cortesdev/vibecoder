@@ -330,19 +330,21 @@ export default function ProjectBuilder({
       </aside>
 
       <section aria-label="Workspace" className="hidden min-h-0 flex-1 flex-col md:flex" style={{ maxHeight: "97vh" }}>
-        <div className="flex shrink-0 items-center gap-1 px-3 py-2" role="tablist" aria-label="Workspace panels">
-          {TABS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
-              className="chip"
-            >
-              {t}
-            </button>
-          ))}
+        <div className="flex shrink-0 items-center gap-1 px-3 py-2">
+          <div className="flex items-center gap-1" role="tablist" aria-label="Workspace panels">
+            {TABS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="tab"
+                aria-selected={tab === t}
+                onClick={() => setTab(t)}
+                className="chip"
+              >
+                {t}
+              </button>
+            ))}
+          </div>
           <span className="ml-auto">
             <ExportButton projectId={projectId} />
           </span>

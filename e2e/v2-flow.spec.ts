@@ -60,9 +60,10 @@ test.describe("v2 rebuild flow", () => {
     await page.getByRole("tab", { name: "Presets" }).click();
     const coral = page.getByRole("radio", { name: /^Coral/ });
     await coral.scrollIntoViewIfNeeded();
-    await page.getByRole("button", { name: "Apply", exact: true }).first().click();
+    await coral.getByRole("button", { name: "Apply", exact: true }).click();
     await expect(page.getByText(/Theme applied/i)).toBeVisible({ timeout: 30_000 });
     await page.reload();
+    await page.getByRole("tab", { name: "Presets" }).click();
     await expect(page.getByRole("radio", { name: /Coral \(current\)/ })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: /Undo/ }).click();
     await expect(page.getByText(/Undone/i)).toBeVisible({ timeout: 30_000 });
