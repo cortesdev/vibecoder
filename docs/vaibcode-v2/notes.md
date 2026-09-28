@@ -69,3 +69,43 @@ assertion) + jsdom/undici worker errors in component tests.
 - `Prompt.metadata: String?` (nullable JSON text, SQLite convention)
 - `PreviewShare { id, projectId, tokenHash unique, createdAt, expiresAt, revokedAt? }`
   with `Project.shares` relation. Bearer token never stored.
+
+## Reset — chat + asides stripped to shells (pre-rebuild)
+- `project-builder.tsx` → layout-only shell (same props + DTO exports, so
+  `[id]/page.tsx` compiles untouched): read-only history, disabled composer,
+  five empty tabs. Zero fetching, zero agent calls.
+- Deleted with no remaining importers: `editor.tsx`, `preview-pane.tsx`,
+  `ui-presets-panel.tsx`, `integrations-panel.tsx`, `lib/project-server.ts`
+  (localhost-Vite production path gone with it, per GAP 2).
+- Deleted routes: `prompt/`, `prompt/stream`, `changes/`, `files/`,
+  `server/`, `apply-preset/`. Kept: `[id]/route.ts` (project CRUD),
+  `projects/route.ts` (create).
+- Kept intentionally: `model-picker`, `home-composer`, `settings-client`,
+  `new-project-picker`, engine/models/readiness/lib (service layer stays).
+- Gates after strip: `tsc` clean, `pnpm build` clean, `pnpm lint` 0 errors
+  (6 warnings), tests 107 passed / 7 failed (same pre-existing 7).
+
+## M2 — six templates + picker (complete)
+- `templates/shared.ts`: base files (React 19.2.8 pkg, index.html, main.tsx,
+  tsconfig, vite config), theme delimiters `/* vibecoder:theme:start|end */`.
+- Six modules (landing, saas-dashboard, portfolio, blog, ecommerce-lite,
+  chat-app): distinct functional starters, react-only imports, no backticks.
+- `templates/catalog.ts`: TemplateId, metadata, `filesFor`/`resolveTemplate`
+  (unknown → landing).
+- `catalog.test.ts` (5 tests) + `build.test.ts` (parameterized real bundling).
+  TDD caught a genuine bug: CSS imports fail without `outfile` even when
+  `write:false` — the old preview-pane had the same latent bug. Fixed in
+  `preview/build-preview.ts` (pure module: norm/loader/entry/CDN/bundle/
+  escape/assemble/snapshot).
+- `createProject(userId, name, templateId?)`; `scaffoldFor` retired (zero
+  remaining references); route accepts `templateId`.
+- `new-project-picker.tsx` (?template=, six cards, visible fallback),
+  thumbnails in `public/templates/*.svg`, wired into `/agent` + HomeComposer
+  (live search-param read, Suspense-wrapped).
+- FreeLLM gateway built in: provider `custom` + free model `custom-auto`
+  (`model: "auto"`, no default base URL — inert until
+  `VIBECODER_BASE_URL_CUSTOM` is set; key via `VIBECODER_CUSTOM_API_KEY` /
+  user BYO). Second in FREE_PREFERENCE; skipped when unconfigured.
+- Gates: tsc clean, eslint 0 errors (2 `<img>` warnings, static thumbs),
+  build clean, templates 11/11 green; only pre-existing `openrouter-paid`
+  failure in scope.
