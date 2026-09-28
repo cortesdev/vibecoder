@@ -61,7 +61,7 @@ You are not starting from zero. This repo is a Next.js 16 + React 19 + Tailwind 
 ## Architecture guidance
 
 - Next.js App Router in `src/app`; server actions or route handlers for the pipeline; middleware for auth gates. `pnpm dev` works with Stripe + local Postgres (docker-compose or hosted dev DB) and a **deterministic mock agent** so the whole pipeline — credits, diffs, versions, preview — is demoable and testable with zero API keys and zero spend.
-- Generation pipeline: `Prompt` (pending → running → completed/failed) → plan → file ops recorded as `Change` rows → typecheck/build gate → `ProjectVersion` snapshot → preview refresh.
+- Generation pipeline: `Prompt` (pending → running → completed/failed) → build directly → file ops recorded as `Change` rows → typecheck/build gate → `ProjectVersion` snapshot → preview refresh. Never start with a plan review. Only pause mid-build for a true blocker — a decision only the user can make — offering up to 3 concrete options (recommended first) plus free-text input, sparingly and never abruptly.
 - One LLM interface, two adapters: platform-key provider (keys in env, server-only) and the mock. Model routing: cheap model for small edits, strong for planning — user-overridable, each tier priced in credits.
 - Preview server = managed child process per running project, sandboxed: resolve all generated paths inside the project workspace (reject `..` traversal), never execute model output outside the preview sandbox, per-user concurrency limits, tear down on idle. Shareable preview links render read-only against this server.
 - Rate-limit auth and generation endpoints; credit debits are immutable for support disputes.

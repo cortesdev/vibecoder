@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { currentUser } from "@/lib/auth";
 import { getBalance, ensureWallet } from "@/lib/credits";
 import ThemeToggle from "@/components/theme-toggle";
-import { Cog, CreditCard, FolderOpen, Plus, ArrowUpCircle, LogOut } from "lucide-react";
+import SignOutButton from "@/components/sign-out-button";
+import { Cog, CreditCard, FolderOpen, Plus, ArrowUpCircle } from "lucide-react";
 
 export default async function AppLayout({
   children,
@@ -89,11 +90,7 @@ export default async function AppLayout({
             <Cog size={16} aria-hidden="true" /> Settings
           </Link>
           <ThemeToggle />
-          <form action="/api/auth/logout" method="post">
-            <button type="submit" className="sidebar-link w-full text-left">
-              <LogOut size={16} aria-hidden="true" /> Sign out
-            </button>
-          </form>
+          <SignOutButton />
         </div>
       </aside>
 

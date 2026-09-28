@@ -5,7 +5,8 @@ import { currentUser } from "@/lib/auth";
 import { getBalance, ensureWallet } from "@/lib/credits";
 import ThemeToggle from "@/components/theme-toggle";
 import SidebarProject from "@/components/projects/sidebar-project";
-import { Cog, CreditCard, Plus, ArrowUpCircle, LogOut } from "lucide-react";
+import SignOutButton from "@/components/sign-out-button";
+import { Cog, CreditCard, Plus, ArrowUpCircle } from "lucide-react";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -90,11 +91,7 @@ export default async function AppLayout({
             <Cog size={16} aria-hidden="true" /> Settings
           </Link>
           <ThemeToggle />
-          <form action="/api/auth/logout" method="post">
-            <button type="submit" className="sidebar-link w-full text-left">
-              <LogOut size={16} aria-hidden="true" /> Sign out
-            </button>
-          </form>
+          <SignOutButton />
         </div>
       </aside>
 
